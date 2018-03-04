@@ -14,7 +14,14 @@ Use tokio.io and multiplex tokio-proto
 
 Call echo stored procedure
 
-Lua: 
+run tarantool
+
+```bash
+cd test-tarantool;tarantool init-tarantool.lua
+```
+
+
+Lua stored procedure: 
 ```lua
 function test(a,b)
    return a,b,11
@@ -35,7 +42,7 @@ let response_future = client_factory.get_connection()
     .and_then(|client| {
         client.call_fn2("test", &("param11", "param12") , &2)
     })
-    .and_then(move |mut response| {
+    .and_then(|mut response| {
         let (value1, value2, value3) : ((String,String), (u64,), (Option<u64>,)) = response.decode_trio()?;
         Ok((value1, value2, value3))
     }) ;
@@ -44,6 +51,13 @@ match core.run(response_future) {
     Ok(res) => println!("stored procedure response ={:?}", res)
 }
 
+```
+
+Output :
+
+```log
+Connect to tarantool and call simple stored procedure!
+stored procedure response =(("param11", "param12"), (2,), (Some(11),))
 ```
 
 On examples part of project you can also see more complicated example :
