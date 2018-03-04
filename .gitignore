@@ -1,0 +1,12 @@
+/.idea
+/target/
+**/*.rs.bk
+*.log
+*.snap
+*.xlog
+*.pid
+*.lock
+*.toml
+*.iml
+
+
