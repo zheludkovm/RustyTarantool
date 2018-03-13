@@ -11,7 +11,7 @@ use rmp::encode;
 
 use std::io;
 use std::str;
-use bytes::BytesMut;
+use bytes::{BytesMut,IntoBuf};
 
 
 
@@ -65,9 +65,9 @@ impl Decoder for TarantoolCodec {
 fn parse_response(buf: &mut BytesMut, size: usize) -> io::Result<(RequestId, io::Result<TarantoolResponse>)> {
     buf.split_to(5);
     let response_body = buf.split_to(size);
-    let r: &mut &[u8] = &mut response_body.as_ref();
+    let mut r = response_body.into_buf();
 
-    let headers = decode::read_value(r).map_err(map_err_to_io)?;
+    let headers = decode::read_value(&mut r).map_err(map_err_to_io)?;
     let (code, sync) = parse_headers(headers)?;
 
     match code {

@@ -1,4 +1,5 @@
 use std::io;
+use std::io::Cursor;
 use std::error;
 use byteorder::{ReadBytesExt};
 
@@ -8,6 +9,7 @@ use rmpv::decode;
 use serde::{Serialize, Deserialize};
 use sha1::Sha1;
 use base64;
+use bytes::{BytesMut, Buf};
 
 
 pub fn decode_serde<'de, T, R>(r:R) -> io::Result<T>
@@ -40,16 +42,19 @@ pub fn make_map_err_to_io() -> io::Error
     io::Error::new(io::ErrorKind::Other, "Cant get key from map!")
 }
 
-pub fn search_key_in_msgpack_map(r: &mut &[u8], search_key: u64) -> io::Result<Vec<u8>> {
+pub fn search_key_in_msgpack_map(mut r: Cursor<BytesMut>, search_key: u64) -> io::Result<Vec<u8>> {
     r.read_u8()?;
-    if r.is_empty() {
+    if r.remaining()==0 {
         Ok(Vec::new())
     } else {
-        while !r.is_empty() {
-            let key = decode::read_value(r).map_err(map_err_to_io)?;
+        while r.remaining()!=0 {
+            let key = decode::read_value(&mut r).map_err(map_err_to_io)?;
             match key {
                 Value::Integer(k) if k.is_u64() && k.as_u64().unwrap() == search_key => {
-                    return Ok(Vec::from(*r));
+                    let pos = r.position();
+                    let mut res_buf = r.into_inner();
+                    res_buf.split_to(pos as usize);
+                    return Ok(res_buf.to_vec());
                 }
                 _ => {}
             }
@@ -60,18 +65,15 @@ pub fn search_key_in_msgpack_map(r: &mut &[u8], search_key: u64) -> io::Result<V
 
 
 pub fn get_map_value(map: &Vec<(Value, Value)>, key: u64) -> io::Result<u64> {
-    for row in map {
-        if let &(Value::Integer(row_key), Value::Integer(val)) = row {
-            match (row_key.as_u64(), val.as_u64()) {
-                (Some(key64), Some(value64)) if key64 == key => {
-                    return Ok(value64);
-                }
-                _ => {}
-            }
+    map.iter()
+    .filter_map(|row|{
+        match row {
+            &(Value::Integer(row_key), Value::Integer(val)) if row_key.as_u64()==Some(key) && val.is_u64() => val.as_u64(),
+            _ => None
         }
-    }
-
-    Err(io::Error::new(io::ErrorKind::Other, "Not found header !"))
+    })
+    .next()
+    .ok_or_else(||{io::Error::new(io::ErrorKind::Other, "Not found header !")})
 }
 
 pub fn transform_u32_to_array_of_u8(x: u32) -> [u8; 4] {
