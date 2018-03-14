@@ -59,7 +59,7 @@ fn test_call_fn() {
     let (mut core, client) = init_client();
 
     let resp = client.call_fn("test", &(("aa", "aa"), 1))
-        .and_then(move |mut response| {
+        .and_then(move |response| {
             println!("response2: {:?}", response);
             let s: (Vec<String>, Vec<u64>) = response.decode_pair()?;
             println!("resp value={:?}", s);
@@ -77,7 +77,7 @@ fn test_select() {
     let key= (1,);
 
     let resp = client.select(SPACE_ID,0, &key,0,100,0)
-        .and_then(move |mut response| {
+        .and_then(move |response| {
             println!("response2: {:?}", response);
             let s: Vec<(u32, String)> = response.decode()?;
             println!("resp value={:?}", s);
@@ -101,7 +101,7 @@ fn test_delete_insert_update() {
         .and_then(|_|{
             client.insert(SPACE_ID,&tuple)
         })
-        .and_then(move |mut response| {
+        .and_then(move |response| {
             println!("response2: {:?}", response);
             let s: Vec<(u32, String)> = response.decode()?;
             println!("resp value={:?}", s);
@@ -111,7 +111,7 @@ fn test_delete_insert_update() {
         .and_then(|_| {
             client.update(SPACE_ID, &tuple, &update_op)
         })
-        .and_then(move |mut response| {
+        .and_then(move |response| {
             let s: Vec<(u32, String,String)> = response.decode()?;
             println!("resp value={:?}", s);
             assert_eq!(vec![(3, "test_insert".to_string(), "test_update".to_string())], s);
@@ -120,7 +120,7 @@ fn test_delete_insert_update() {
         .and_then(|_| {
             client.replace(SPACE_ID, &tuple_replace)
         })
-        .and_then(move |mut response| {
+        .and_then(move |response| {
             let s: Vec<(u32, String,String)> = response.decode()?;
             println!("resp value={:?}", s);
             assert_eq!(vec![(3, "test_insert".to_string(), "replace".to_string())], s);
@@ -139,7 +139,7 @@ fn test_upsert() {
 
     let resp =
         client.upsert(SPACE_ID,&key, &key,&update_op)
-        .and_then(move |mut response| {
+        .and_then(move |response| {
             println!("response2: {:?}", response);
             let s:Vec<u8> = response.decode()?;
             let empty:Vec<u8> = vec![];
@@ -157,7 +157,7 @@ fn test_eval() {
 
     let resp =
         client.eval("return ...\n".to_string(),&(1,2))
-            .and_then(move |mut response| {
+            .and_then(move |response| {
                 println!("response2: {:?}", response);
                 let s:(u32,u32) = response.decode()?;
                 let id:(u32,u32) = (1,2);

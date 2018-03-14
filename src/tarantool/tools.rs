@@ -9,7 +9,7 @@ use rmpv::decode;
 use serde::{Serialize, Deserialize};
 use sha1::Sha1;
 use base64;
-use bytes::{BytesMut, Buf};
+use bytes::{BytesMut, Bytes, Buf};
 
 
 pub fn decode_serde<'de, T, R>(r:R) -> io::Result<T>
@@ -42,10 +42,10 @@ pub fn make_map_err_to_io() -> io::Error
     io::Error::new(io::ErrorKind::Other, "Cant get key from map!")
 }
 
-pub fn search_key_in_msgpack_map(mut r: Cursor<BytesMut>, search_key: u64) -> io::Result<Vec<u8>> {
+pub fn search_key_in_msgpack_map(mut r: Cursor<BytesMut>, search_key: u64) -> io::Result<Bytes> {
     r.read_u8()?;
     if r.remaining()==0 {
-        Ok(Vec::new())
+        Ok(Bytes::new())
     } else {
         while r.remaining()!=0 {
             let key = decode::read_value(&mut r).map_err(map_err_to_io)?;
@@ -54,7 +54,7 @@ pub fn search_key_in_msgpack_map(mut r: Cursor<BytesMut>, search_key: u64) -> io
                     let pos = r.position();
                     let mut res_buf = r.into_inner();
                     res_buf.split_to(pos as usize);
-                    return Ok(res_buf.to_vec());
+                    return Ok(res_buf.freeze());
                 }
                 _ => {}
             }

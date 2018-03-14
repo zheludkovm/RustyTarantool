@@ -37,7 +37,7 @@ fn main() {
 
     for x in 0..count {
         let resp = client.call_fn("test", &(("aa", "aa"), x))
-            .and_then(move |mut response| {
+            .and_then(move |response| {
                 let s: (Vec<String>, Vec<u64>, Vec<Option<u64>>) = response.decode()?;
                 let v = COUNTER.fetch_add(1, Ordering::SeqCst);
                 if v==count-1 {

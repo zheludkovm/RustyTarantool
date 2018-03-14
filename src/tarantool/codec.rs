@@ -11,7 +11,7 @@ use rmp::encode;
 
 use std::io;
 use std::str;
-use bytes::{BytesMut,IntoBuf};
+use bytes::{BytesMut, Bytes,IntoBuf, BufMut};
 
 
 
@@ -127,7 +127,7 @@ fn decode_greetings(codec: &mut TarantoolCodec, buf: &mut BytesMut) -> io::Resul
     let res = match test {
         GREETINGS_HEADER => Ok(Some((0, Ok(TarantoolResponse::new(
             0,
-            vec![],
+            Bytes::new(),
         ))))),
         _ => Err(io::Error::new(io::ErrorKind::Other, "Unknown header!"))
     };
@@ -167,10 +167,11 @@ fn create_packet(buf: &mut BytesMut,
     }
 
     let len = (header.len() + body.len()) as u32;
-    buf.extend(&[0xce]);
-    buf.extend(&transform_u32_to_array_of_u8(len));
-    buf.extend(header);
-    buf.extend(body);
+    buf.reserve(5+len as usize);
+    buf.put_slice(&[0xce]);
+    buf.put_slice(&transform_u32_to_array_of_u8(len));
+    buf.put(header);
+    buf.put(body);
     Ok(())
 }
 

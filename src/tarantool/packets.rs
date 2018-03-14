@@ -6,6 +6,7 @@ use rmpv::{Value};
 use serde::{Serialize, Deserialize};
 use tarantool::tools;
 
+use bytes::{Bytes ,IntoBuf};
 
 
 #[derive(Debug)]
@@ -32,7 +33,7 @@ pub enum TarantoolRequest {
 #[derive(Debug)]
 pub struct TarantoolResponse {
      code: u64,
-     data: Vec<u8>,
+     data: Bytes,
 }
 
 #[derive(Debug)]
@@ -75,37 +76,33 @@ pub enum Key {
 }
 
 impl TarantoolResponse {
-    pub fn new (code:u64, data: Vec<u8>) -> TarantoolResponse {
+    pub fn new (code:u64, data: Bytes) -> TarantoolResponse {
         TarantoolResponse{code, data}
     }
 
-    pub fn decode<'de, T>(&mut self) -> io::Result<T>
+    pub fn decode<'de, T>(self) -> io::Result<T>
         where T: Deserialize<'de>
     {
-        let r = &mut &self.data[..];
-        tools::decode_serde(r)
+        tools::decode_serde(self.data.into_buf())
     }
 
-    pub fn decode_single<'de, T>(&mut self) -> io::Result<T>
+    pub fn decode_single<'de, T>(self) -> io::Result<T>
         where T: Deserialize<'de>
     {
-        let r = &mut &self.data[..];
-        let (res,) = tools::decode_serde(r)?;
+        let (res,) = tools::decode_serde(self.data.into_buf())?;
         Ok(res)
     }
 
-    pub fn decode_pair<'de, T1, T2>(&mut self) -> io::Result<(T1,T2)>
+    pub fn decode_pair<'de, T1, T2>(self) -> io::Result<(T1,T2)>
         where T1: Deserialize<'de>,T2: Deserialize<'de>
     {
-        let r = &mut &self.data[..];
-        Ok(tools::decode_serde(r)?)
+        Ok(tools::decode_serde(self.data.into_buf())?)
     }
 
-    pub fn decode_trio<'de, T1, T2, T3>(&mut self) -> io::Result<(T1,T2,T3)>
+    pub fn decode_trio<'de, T1, T2, T3>(self) -> io::Result<(T1,T2,T3)>
         where T1: Deserialize<'de>,T2: Deserialize<'de>,T3: Deserialize<'de>
     {
-        let r = &mut &self.data[..];
-        let (r1,r2,r3) = tools::decode_serde(r)?;
+        let (r1,r2,r3) = tools::decode_serde(self.data.into_buf())?;
         Ok((r1,r2,r3))
     }
 }

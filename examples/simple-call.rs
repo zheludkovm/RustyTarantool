@@ -30,7 +30,7 @@ fn main() {
         .and_then(|client| {
             client.call_fn2("test", &("param11", "param12") , &2)
         })
-        .and_then(|mut response| {
+        .and_then(|response| {
             let (value1, value2, value3) : ((String,String), (u64,), (Option<u64>,)) = response.decode_trio()?;
             Ok((value1, value2, value3))
         }) ;

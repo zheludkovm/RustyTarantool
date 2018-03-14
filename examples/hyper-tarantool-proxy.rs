@@ -73,7 +73,7 @@ impl SimpleService {
         Box::new(self.client_factory
             .get_connection()
             .and_then(move |client| client.call_fn3("test_search", &country_name, &region, &sub_region ))
-            .and_then(move |mut response| {
+            .and_then(move |response| {
                 Ok(Result::new(response.decode_single()?))
             })
             .and_then(|result| {
