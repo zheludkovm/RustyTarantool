@@ -6,7 +6,6 @@
 *.xlog
 *.pid
 *.lock
-*.toml
 *.iml
 
 

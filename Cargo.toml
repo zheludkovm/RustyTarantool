@@ -1,0 +1,35 @@
+[package]
+name = "rusty_tarantool"
+version = "0.1.0"
+authors = ["mzheludkov"]
+
+[lib]
+name = "rusty_tarantool"
+path = "src/lib.rs"
+
+[dependencies]
+maplit = "1.0.0"
+futures = "0.1.14"
+bytes = "0.4"
+log = "0.4.1"
+env_logger = "0.5.3"
+byteorder = "1.1.0"
+tokio-io = "0.1"
+tokio-core = "0.1.6"
+tokio-proto = "0.1"
+tokio-service = "0.1"
+
+serde = "1.0.15"
+serde_derive = "1.0"
+rmp = "0.8.7"
+rmp-serde = "0.13.7"
+rmp-serialize = "0.8.0"
+rmpv = { version = "0.4.0", features = ["with-serde"] }
+base64 = "0.2.1"
+sha1 = "0.2.0"
+rustc-serialize = "0.3.22"
+
+[dev-dependencies]
+hyper = "0.11"
+serde_json = "1.0"
+url = "1.7.0"
