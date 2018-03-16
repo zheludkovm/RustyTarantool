@@ -5,7 +5,7 @@ use rmpv::{self, decode, Value};
 use std::io;
 use std::str;
 use tarantool::packets::{AuthPacket, Code, Key, TarantoolRequest, TarantoolResponse};
-use tarantool::tools::{decode_serde, get_map_value, make_auth_digest, map_err_to_io, SafeBytesMutWriter, search_key_in_msgpack_map, serialize_to_buf_mut, transform_u32_to_array_of_u8};
+use tarantool::tools::{decode_serde, get_map_value, make_auth_digest, map_err_to_io, SafeBytesMutWriter, search_key_in_msgpack_map, serialize_to_buf_mut, write_u32_to_slice};
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_io::codec::{Decoder, Encoder, Framed};
 use tokio_proto::multiplex::{ClientProto, RequestId};
@@ -162,17 +162,13 @@ fn create_packet(buf: &mut BytesMut,
             rmpv::encode::write_value(&mut writer, val)?;
         }
         for (ref key, ref val) in additional_data {
-            serialize_to_buf_mut(&mut writer, &Value::from(*key as u8))?;
-            io::Write::write(&mut writer, &val[..])?;
+            rmpv::encode::write_value(&mut writer, &Value::from((*key) as u8))?;
+            io::Write::write(&mut writer, val)?;
         }
     }
 
     let len = (buf.len() - start_position - 4) as u32;
-    let encoded_len = transform_u32_to_array_of_u8(len);
-    buf[start_position] = encoded_len[0];
-    buf[start_position + 1] = encoded_len[1];
-    buf[start_position + 2] = encoded_len[2];
-    buf[start_position + 3] = encoded_len[3];
+    write_u32_to_slice(&mut buf[start_position..start_position+4], len);
 
     Ok(())
 }

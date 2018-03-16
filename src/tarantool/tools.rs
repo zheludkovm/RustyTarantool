@@ -84,6 +84,13 @@ pub fn transform_u32_to_array_of_u8(x: u32) -> [u8; 4] {
     [b1, b2, b3, b4]
 }
 
+pub fn write_u32_to_slice(buf:&mut [u8], x: u32)   {
+    buf[0] = ((x >> 24) & 0xff) as u8;
+    buf[1] = ((x >> 16) & 0xff) as u8;
+    buf[2] = ((x >> 8) & 0xff) as u8;
+    buf[3] = (x & 0xff) as u8;
+}
+
 pub fn make_auth_digest(salt_bytes: Vec<u8>, password: &[u8]) -> io::Result<[u8; 20]> {
     let mut sha1 = Sha1::new();
     sha1.update(password);
