@@ -1,18 +1,14 @@
-use tarantool::packets::{TarantoolRequest, TarantoolResponse, Code, Key, AuthPacket};
-use tarantool::tools::{map_err_to_io, decode_serde, serialize_to_vec_u8, serialize_to_buf_mut, search_key_in_msgpack_map, get_map_value, transform_u32_to_array_of_u8, make_auth_digest};
-
-use futures::{Future, Stream, Sink};
-use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_io::codec::{Encoder, Decoder, Framed};
-use tokio_proto::multiplex::{RequestId, ClientProto};
-
-use rmpv::{self, Value, decode};
+use bytes::{BufMut, Bytes, BytesMut, IntoBuf};
+use futures::{Future, Sink, Stream};
 use rmp::encode;
-
+use rmpv::{self, decode, Value};
 use std::io;
 use std::str;
-use bytes::{BytesMut, Bytes,IntoBuf, BufMut};
-
+use tarantool::packets::{AuthPacket, Code, Key, TarantoolRequest, TarantoolResponse};
+use tarantool::tools::{decode_serde, get_map_value, make_auth_digest, map_err_to_io, SafeBytesMutWriter, search_key_in_msgpack_map, serialize_to_buf_mut, transform_u32_to_array_of_u8};
+use tokio_io::{AsyncRead, AsyncWrite};
+use tokio_io::codec::{Decoder, Encoder, Framed};
+use tokio_proto::multiplex::{ClientProto, RequestId};
 
 
 const GREETINGS_HEADER_LENGTH: usize = 9;
@@ -72,12 +68,12 @@ fn parse_response(buf: &mut BytesMut, size: usize) -> io::Result<(RequestId, io:
 
     match code {
         0 => {
-            Ok((sync, Ok(TarantoolResponse::new(code,search_key_in_msgpack_map(r, Key::DATA as u64)?,))))
+            Ok((sync, Ok(TarantoolResponse::new(code, search_key_in_msgpack_map(r, Key::DATA as u64)?))))
         }
         _ => {
             let mut response_data = TarantoolResponse::new(code, search_key_in_msgpack_map(r, Key::ERROR as u64)?);
             let s: String = response_data.decode()?;
-            error!("Tarantool ERROR >> {:?}",s);
+            error!("Tarantool ERROR >> {:?}", s);
             Ok((sync, Err(io::Error::new(io::ErrorKind::Other, s))))
         }
     }
@@ -102,13 +98,13 @@ impl Encoder for TarantoolCodec {
                 let digest = make_auth_digest(self.salt.clone().unwrap(), packet.password.as_bytes())?;
 
                 create_packet(dst, Code::AUTH, sync_id, None,
-                                      vec![
-                                          (Key::USER_NAME,
-                                           Value::from(packet.login)),
-                                          (Key::TUPLE,
-                                           Value::Array(vec![Value::from("chap-sha1"), Value::from(&digest as &[u8])]))
-                                      ],
-                                      vec![],
+                              vec![
+                                  (Key::USER_NAME,
+                                   Value::from(packet.login)),
+                                  (Key::TUPLE,
+                                   Value::Array(vec![Value::from("chap-sha1"), Value::from(&digest as &[u8])]))
+                              ],
+                              vec![],
                 )
             }
             (sync_id, TarantoolRequest::Command(packet)) => {
@@ -139,11 +135,11 @@ fn decode_greetings(codec: &mut TarantoolCodec, buf: &mut BytesMut) -> io::Resul
 }
 
 fn create_packet(buf: &mut BytesMut,
-                  code: Code,
-                  sync_id: u64,
-                  schema_id: Option<u64>,
-                  data: Vec<(Key, Value)>,
-                  additional_data: Vec<(Key, Vec<u8>)>) -> io::Result<()> {
+                 code: Code,
+                 sync_id: u64,
+                 schema_id: Option<u64>,
+                 data: Vec<(Key, Value)>,
+                 additional_data: Vec<(Key, Vec<u8>)>) -> io::Result<()> {
     let mut header_vec = vec![(Value::from(Key::CODE as u8),
                                Value::from(code as u8)),
                               (Value::from(Key::SYNC as u8),
@@ -153,25 +149,31 @@ fn create_packet(buf: &mut BytesMut,
         header_vec.push((Value::from(Key::SCHEMA_ID as u8), Value::from(schema_id_v)))
     }
 
-    let header = serialize_to_vec_u8(&Value::Map(header_vec))?;
-    let mut body = Vec::new();
+    buf.reserve(5);
+    let start_position = buf.len() + 1;
+    buf.put_slice(&[0xce, 0x00, 0x00, 0x00, 0x00]);
+    {
+        let mut writer = SafeBytesMutWriter::writer(buf);
 
-    encode::write_map_len(&mut body, data.len() as u32 + (additional_data.len() as u32))?;
-    for (ref key, ref val) in data {
-        rmpv::encode::write_value(&mut body, &Value::from((*key) as u8))?;
-        rmpv::encode::write_value(&mut body, val)?;
-    }
-    for (ref key, ref val) in additional_data {
-        serialize_to_buf_mut(&mut body, &Value::from(*key as u8))?;
-        io::Write::write(&mut body, &val[..])?;
+        serialize_to_buf_mut(&mut writer, &Value::Map(header_vec))?;
+        encode::write_map_len(&mut writer, data.len() as u32 + (additional_data.len() as u32))?;
+        for (ref key, ref val) in data {
+            rmpv::encode::write_value(&mut writer, &Value::from((*key) as u8))?;
+            rmpv::encode::write_value(&mut writer, val)?;
+        }
+        for (ref key, ref val) in additional_data {
+            serialize_to_buf_mut(&mut writer, &Value::from(*key as u8))?;
+            io::Write::write(&mut writer, &val[..])?;
+        }
     }
 
-    let len = (header.len() + body.len()) as u32;
-    buf.reserve(5+len as usize);
-    buf.put_slice(&[0xce]);
-    buf.put_slice(&transform_u32_to_array_of_u8(len));
-    buf.put(header);
-    buf.put(body);
+    let len = (buf.len() - start_position - 4) as u32;
+    let encoded_len = transform_u32_to_array_of_u8(len);
+    buf[start_position] = encoded_len[0];
+    buf[start_position + 1] = encoded_len[1];
+    buf[start_position + 2] = encoded_len[2];
+    buf[start_position + 3] = encoded_len[3];
+
     Ok(())
 }
 
@@ -217,7 +219,6 @@ impl<T: AsyncRead + AsyncWrite + 'static> ClientProto<T> for TarantoolProto {
                             }
                             _ => Ok(transport)
                         }
-
                     })
             });
 

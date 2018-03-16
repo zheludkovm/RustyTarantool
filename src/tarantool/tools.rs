@@ -9,7 +9,7 @@ use rmpv::decode;
 use serde::{Serialize, Deserialize};
 use sha1::Sha1;
 use base64;
-use bytes::{BytesMut, Bytes, Buf};
+use bytes::{BytesMut, Bytes, Buf, BufMut};
 
 
 pub fn decode_serde<'de, T, R>(r:R) -> io::Result<T>
@@ -107,4 +107,31 @@ pub fn make_auth_digest(salt_bytes: Vec<u8>, password: &[u8]) -> io::Result<[u8;
         digest4[i] = digest1_b ^ digest3[i];
     }
     Ok(digest4)
+}
+
+
+//safe buf mut writer
+
+#[derive(Debug)]
+pub struct SafeBytesMutWriter<'a> {
+    buf: &'a mut BytesMut,
+}
+
+impl <'a> SafeBytesMutWriter<'a>{
+
+    pub fn writer( buf:&'a mut BytesMut) -> SafeBytesMutWriter {
+        Self{buf}
+    }
+}
+
+impl <'a> io::Write for SafeBytesMutWriter<'a> {
+    fn write(&mut self, src: &[u8]) -> io::Result<usize> {
+        self.buf.reserve(src.len());
+        self.buf.put(src);
+        Ok(src.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
