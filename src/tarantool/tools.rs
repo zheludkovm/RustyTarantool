@@ -1,15 +1,14 @@
+use base64;
+use byteorder::ReadBytesExt;
+use bytes::{Buf, BufMut, Bytes, BytesMut};
+use rmp_serde::{Deserializer, Serializer};
+use rmpv::Value;
+use rmpv::decode;
+use serde::{Deserialize, Serialize};
+use sha1::Sha1;
+use std::error;
 use std::io;
 use std::io::Cursor;
-use std::error;
-use byteorder::{ReadBytesExt};
-
-use rmpv::{Value};
-use rmp_serde::{Serializer, Deserializer};
-use rmpv::decode;
-use serde::{Serialize, Deserialize};
-use sha1::Sha1;
-use base64;
-use bytes::{BytesMut, Bytes, Buf, BufMut};
 
 
 pub fn decode_serde<'de, T, R>(r:R) -> io::Result<T>

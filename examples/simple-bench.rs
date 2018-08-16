@@ -1,19 +1,16 @@
-extern crate rusty_tarantool;
-
-extern crate bytes;
-extern crate tokio_core;
-extern crate tokio_io;
-extern crate tokio_service;
+extern crate env_logger;
 extern crate futures;
+extern crate log;
+extern crate rusty_tarantool;
+extern crate tokio;
 
 extern crate rmpv;
 extern crate rmp_serde;
 extern crate serde;
 extern crate rmp;
-extern crate env_logger;
 
-use rusty_tarantool::tarantool::{Client};
-use tokio_core::reactor::Core;
+use tokio::runtime::current_thread::Runtime;
+use rusty_tarantool::tarantool::Client;
 use futures::{Future};
 
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -23,17 +20,13 @@ static COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 fn main() {
     println!("Simple client run!");
-    env_logger::init();
+    let mut rt = Runtime::new().unwrap();
 
-    let mut core = Core::new().unwrap();
-    let handle = core.handle();
     let addr = "127.0.0.1:3301".parse().unwrap();
-    let client_f = Client::connect(&addr,"rust","rust", &handle);
-
-    let client = core.run(client_f).unwrap();
+    let client = Client::new(addr,"rust","rust", 1000);
     let start = Instant::now();
     let count = 1000000;
-    
+
 
     for x in 0..count {
         let resp = client.call_fn("test", &(("aa", "aa"), x))
@@ -51,8 +44,8 @@ fn main() {
             })
             .map_err(|_e| ())
         ;
-        handle.spawn(resp);
+        rt.spawn(resp);
     };
 
-    core.run(futures::future::empty::<(), ()>()).unwrap();
+    rt.run();
 }

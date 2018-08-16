@@ -8,7 +8,7 @@ https://github.com/tarantool/tarantool-java
 
 ## Overview
 
-Use tokio.io and multiplex tokio-proto
+Use tokio.io as base client framework
 
 ## Example
 
@@ -33,20 +33,19 @@ Rust client :
 
 ```rust
 
-let mut core = Core::new().unwrap();
-let handle = core.handle();
-let addr = "127.0.0.1:3301".parse().unwrap();
-let client_factory = ClientFactory::new(addr, "rust", "rust", handle);
+println!("Connect to tarantool and call simple stored procedure!");
+let mut rt = Runtime::new().unwrap();
 
-let response_future = client_factory.get_connection()
-    .and_then(|client| {
-        client.call_fn2("test", &("param11", "param12") , &2)
-    })
-    .and_then(|mut response| {
-        let (value1, value2, value3) : ((String,String), (u64,), (Option<u64>,)) = response.decode_trio()?;
-        Ok((value1, value2, value3))
+let addr = "127.0.0.1:3301".parse().unwrap();
+let client = Client::new(addr, "rust", "rust", 1000);
+
+let response_future = client.call_fn2("test", &("param11", "param12") , &2)
+    .and_then(|response| {
+        let res : ((String,String), (u64,), (Option<u64>,)) = response.decode_trio()?;
+        Ok(res)
     }) ;
-match core.run(response_future) {
+
+match rt.block_on(response_future) {
     Err(e) => println!("err={:?}", e),
     Ok(res) => println!("stored procedure response ={:?}", res)
 }

@@ -2,10 +2,8 @@ extern crate sha1;
 extern crate byteorder;
 extern crate bytes;
 extern crate futures;
-extern crate tokio_core;
-extern crate tokio_proto;
-extern crate tokio_io;
-extern crate tokio_service;
+extern crate tokio;
+extern crate tokio_codec;
 extern crate maplit;
 
 extern crate rmpv;

@@ -1,15 +1,14 @@
 use bytes::{BufMut, Bytes, BytesMut, IntoBuf};
-use futures::{Future, Sink, Stream};
 use rmp::encode;
 use rmpv::{self, decode, Value};
 use std::io;
 use std::str;
-use tarantool::packets::{AuthPacket, Code, Key, TarantoolRequest, TarantoolResponse};
+use tarantool::packets::{Code, Key, TarantoolRequest, TarantoolResponse};
 use tarantool::tools::{decode_serde, get_map_value, make_auth_digest, map_err_to_io, SafeBytesMutWriter, search_key_in_msgpack_map, serialize_to_buf_mut, write_u32_to_slice};
-use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_io::codec::{Decoder, Encoder, Framed};
-use tokio_proto::multiplex::{ClientProto, RequestId};
+use tokio_codec::{Decoder, Encoder};
 
+pub type RequestId = u64;
+pub type TarantoolFramedRequest = (RequestId, TarantoolRequest);
 
 const GREETINGS_HEADER_LENGTH: usize = 9;
 const GREETINGS_HEADER: &str = "Tarantool";
@@ -178,48 +177,48 @@ pub struct TarantoolProto {
     pub login: String,
     pub password: String,
 }
-
-impl<T: AsyncRead + AsyncWrite + 'static> ClientProto<T> for TarantoolProto {
-    type Request = TarantoolRequest;
-    type Response = io::Result<TarantoolResponse>;
-
-    /// `Framed<T, LineCodec>` is the return value of `io.framed(LineCodec)`
-    type Transport = Framed<T, TarantoolCodec>;
-    type BindTransport = Box<Future<Item=Self::Transport, Error=io::Error>>;
-
-    fn bind_transport(&self, io: T) -> Self::BindTransport {
-        let auth_packet = TarantoolRequest::Auth(AuthPacket {
-            login: self.login.clone(),
-            password: self.password.clone(),
-        });
-        let transport = io.framed(TarantoolCodec::new());
-        let with_auth = transport
-            .into_future()
-            .map_err(|(e, _)| e)
-            .and_then(|(_greetings, transport)| {
-                transport.send((1, auth_packet))
-                    .and_then(|transport|
-                        transport.into_future()
-                            .map_err(|(e, _)| {
-                                error!("error {:?}", e);
-                                e
-                            })
-                    )
-                    .and_then(|(resp, transport)| {
-                        match resp {
-                            Some(r) => {
-                                match r.1 {
-                                    Ok(_) => Ok(transport),
-                                    Err(e) => Err(e)
-                                }
-                            }
-                            _ => Ok(transport)
-                        }
-                    })
-            });
-
-        Box::new(with_auth)
-    }
-}
-
-
+//
+//impl<T: AsyncRead + AsyncWrite + 'static> ClientProto<T> for TarantoolProto {
+//    type Request = TarantoolRequest;
+//    type Response = io::Result<TarantoolResponse>;
+//
+//    /// `Framed<T, LineCodec>` is the return value of `io.framed(LineCodec)`
+//    type Transport = Framed<T, TarantoolCodec>;
+//    type BindTransport = Box<Future<Item=Self::Transport, Error=io::Error>>;
+//
+//    fn bind_transport(&self, io: T) -> Self::BindTransport {
+//        let auth_packet = TarantoolRequest::Auth(AuthPacket {
+//            login: self.login.clone(),
+//            password: self.password.clone(),
+//        });
+//        let transport = io.framed(TarantoolCodec::new());
+//        let with_auth = transport
+//            .into_future()
+//            .map_err(|(e, _)| e)
+//            .and_then(|(_greetings, transport)| {
+//                transport.send((1, auth_packet))
+//                    .and_then(|transport|
+//                        transport.into_future()
+//                            .map_err(|(e, _)| {
+//                                error!("error {:?}", e);
+//                                e
+//                            })
+//                    )
+//                    .and_then(|(resp, transport)| {
+//                        match resp {
+//                            Some(r) => {
+//                                match r.1 {
+//                                    Ok(_) => Ok(transport),
+//                                    Err(e) => Err(e)
+//                                }
+//                            }
+//                            _ => Ok(transport)
+//                        }
+//                    })
+//            });
+//
+//        Box::new(with_auth)
+//    }
+//}
+//
+//

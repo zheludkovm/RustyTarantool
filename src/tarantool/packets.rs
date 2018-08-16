@@ -15,7 +15,7 @@ pub struct AuthPacket {
     pub password: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct CommandPacket {
     pub code: Code,
     pub internal_fields: Vec<(Key, Value)>,
@@ -36,7 +36,7 @@ pub struct TarantoolResponse {
      data: Bytes,
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum Code {
     SELECT = 0x01,
     INSERT = 0x02,
