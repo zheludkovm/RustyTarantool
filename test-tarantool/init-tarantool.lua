@@ -197,7 +197,9 @@ end
 init_spaces()
 
 json=require('json')
+fiber = require('fiber')
 function test(a,b)
+--   fiber.sleep(2)
    return a,b,11
 end
 

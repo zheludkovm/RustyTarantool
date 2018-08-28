@@ -17,6 +17,7 @@ use tarantool::packets::{AuthPacket, CommandPacket, TarantoolRequest, TarantoolR
 use tokio;
 use tokio::net::{ConnectFuture, TcpStream};
 use tokio::timer::{Delay, DelayQueue};
+use tokio::timer::delay_queue;
 use tokio_codec::{Decoder, Framed};
 
 
@@ -30,6 +31,7 @@ pub type CallbackSender = oneshot::Sender<io::Result<TarantoolResponse>>;
 static ERROR_SERVER_DISCONNECT: &str = "SERVER DISCONNECTED!";
 static ERROR_DISPATCH_THREAD_IS_DEAD: &str = "DISPATCH THREAD IS DEAD!";
 static ERROR_CLIENT_DISCONNECTED: &str = "CLIENT DISCONNECTED!";
+static ERROR_TIMEOUT: &str = "TIMEOUT!";
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ClientConfig {
@@ -69,15 +71,22 @@ struct DispatchEngine {
 
     buffered_command: Option<TarantoolFramedRequest>,
     command_counter: RequestId,
+
+    timeout_time_ms: Option<u64>,
+    timeout_queue: DelayQueue<RequestId>,
+    timeout_id_to_key: HashMap<RequestId, delay_queue::Key>,
 }
 
 impl DispatchEngine {
-    fn new(command_receiver: mpsc::UnboundedReceiver<(CommandPacket, CallbackSender)>) -> DispatchEngine {
+    fn new(command_receiver: mpsc::UnboundedReceiver<(CommandPacket, CallbackSender)>, timeout_time_ms: Option<u64>) -> DispatchEngine {
         DispatchEngine {
             command_receiver,
             buffered_command: None,
             awaiting_callbacks: HashMap::new(),
             command_counter: 3,
+            timeout_time_ms,
+            timeout_queue: DelayQueue::new(),
+            timeout_id_to_key: HashMap::new(),
         }
     }
 
@@ -98,6 +107,12 @@ impl DispatchEngine {
         }
         self.buffered_command = None;
 
+        if let Some(timeout_time_ms) = self.timeout_time_ms {
+            for (_, delay_key) in self.timeout_id_to_key.drain() {
+                self.timeout_queue.remove(&delay_key);
+            }
+        }
+
         loop {
             match self.command_receiver.poll() {
                 Ok(Async::Ready(Some((_, callback_sender)))) => {
@@ -116,6 +131,11 @@ impl DispatchEngine {
                     let request_id = self.increment_command_counter();
                     self.awaiting_callbacks.insert(request_id, callback_sender);
                     self.buffered_command = Some((request_id, TarantoolRequest::Command(command_packet)));
+                    if let Some(timeout_time_ms) = self.timeout_time_ms {
+                        let delay_key = self.timeout_queue.insert_at(request_id, Instant::now() + Duration::from_millis(timeout_time_ms));
+                        self.timeout_id_to_key.insert(request_id, delay_key);
+                    }
+
                     self.try_send_buffered_command(sink)
                 }
                 Ok(Async::Ready(None)) => {
@@ -135,6 +155,12 @@ impl DispatchEngine {
             match stream.poll() {
                 Ok(Async::Ready(Some((request_id, command_packet)))) => {
                     debug!("receive command! {} {:?} ", request_id, command_packet);
+                    if let Some(_) = self.timeout_time_ms {
+                        if let Some(delay_key) = self.timeout_id_to_key.remove(&request_id) {
+                            self.timeout_queue.remove(&delay_key);
+                        }
+                    }
+
                     self.awaiting_callbacks
                         .remove(&request_id)
                         .map(|sender| { sender.send(command_packet) });
@@ -144,6 +170,26 @@ impl DispatchEngine {
                 }
                 _ => {
                     return false;
+                }
+            }
+        }
+    }
+
+    fn process_timeouts(&mut self) {
+        if let Some(_) = self.timeout_time_ms {
+            loop {
+                match self.timeout_queue.poll() {
+                    Ok(Async::Ready(Some(request_id_ref))) => {
+                        let request_id = request_id_ref.get_ref();
+                        info!("timeout command! {} ", request_id);
+                        self.timeout_id_to_key.remove(request_id);
+                        if let Some(callback_sender) =  self.awaiting_callbacks.remove(request_id) {
+                            callback_sender.send(Err(io::Error::new(io::ErrorKind::Other, ERROR_TIMEOUT)));
+                        }
+                    }
+                    _ => {
+                        return;
+                    }
                 }
             }
         }
@@ -168,10 +214,11 @@ pub struct Dispatch {
 
 impl Dispatch {
     pub fn new(config: ClientConfig, command_receiver: mpsc::UnboundedReceiver<(CommandPacket, CallbackSender)>) -> Dispatch {
+        let timeout_time_ms = config.timeout_time_ms.clone();
         Dispatch {
             state: DispatchState::New,
             config,
-            engine: DispatchEngine::new(command_receiver),
+            engine: DispatchEngine::new(command_receiver, timeout_time_ms),
         }
     }
 
@@ -258,6 +305,7 @@ impl Future for Dispatch {
                     if self.engine.process_tarantool_responses(stream) {
                         Some(DispatchState::OnReconnect(ERROR_SERVER_DISCONNECT.to_string()))
                     } else {
+                        self.engine.process_timeouts();
                         None
                     }
                 }

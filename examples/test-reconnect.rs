@@ -41,7 +41,7 @@ fn main() {
         addr,
         "rust",
         "rust",
-    ).set_reconnect_time_ms(2000).build();
+    ).set_reconnect_time_ms(2000).set_timeout_time_ms(1000).build();
     
     let task = Interval::new(Instant::now(), Duration::from_millis(1000))
         .for_each(move |instant| {
