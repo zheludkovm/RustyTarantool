@@ -108,9 +108,8 @@ impl DispatchEngine {
         self.buffered_command = None;
 
         if let Some(timeout_time_ms) = self.timeout_time_ms {
-            for (_, delay_key) in self.timeout_id_to_key.drain() {
-                self.timeout_queue.remove(&delay_key);
-            }
+            self.timeout_id_to_key.clear();
+            self.timeout_queue.clear();
         }
 
         loop {
