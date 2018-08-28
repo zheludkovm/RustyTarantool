@@ -5,10 +5,10 @@ extern crate rusty_tarantool;
 extern crate tokio;
 
 use futures::{Future, Stream};
-use rusty_tarantool::tarantool::packets::{ CommandPacket};
+use rusty_tarantool::tarantool::packets::CommandPacket;
 use std::net::SocketAddr;
 use std::time::{Duration, Instant};
-use tokio::timer::{ Interval};
+use tokio::timer::Interval;
 
 
 fn main() {
@@ -24,12 +24,11 @@ fn main() {
     let command = CommandPacket::replace(space_id, &tuple_replace).unwrap();
 
     //we create client without variable - if we don't, awaiting task wil be forever
-    let print_task = rusty_tarantool::tarantool::Client::new(
+    let print_task = rusty_tarantool::tarantool::ClientConfig::new(
         addr,
         "rust",
         "rust",
-        2000
-    )
+    ).set_reconnect_time_ms(2000).build()
         .send_command(command)
         .map(|resp| println!("response! {:?}", resp))
         .map_err(|e| println!("error! {:?}", e))
@@ -38,13 +37,12 @@ fn main() {
     tokio::run(print_task);
     println!("finish single task!");
 
-    let tarantool = rusty_tarantool::tarantool::Client::new(
+    let tarantool = rusty_tarantool::tarantool::ClientConfig::new(
         addr,
         "rust",
         "rust",
-        2000
-    );
-
+    ).set_reconnect_time_ms(2000).build();
+    
     let task = Interval::new(Instant::now(), Duration::from_millis(1000))
         .for_each(move |instant| {
             println!("fire; instant={:?}", instant);

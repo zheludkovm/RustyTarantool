@@ -88,12 +88,12 @@ fn main() {
 
     let service = || {
         println!("init tarantool");
-        let tarantool = tarantool::Client::new(
+        let tarantool = tarantool::ClientConfig::new(
             "127.0.0.1:3301".parse().unwrap(),
             "rust",
-            "rust",
-            2000,
-        );
+            "rust"
+        ).build();
+        
         service_fn(move |body| {
             http_handler(body, &tarantool)
         })

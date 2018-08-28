@@ -16,7 +16,7 @@ use tarantool::codec::{RequestId, TarantoolCodec, TarantoolFramedRequest};
 use tarantool::packets::{AuthPacket, CommandPacket, TarantoolRequest, TarantoolResponse};
 use tokio;
 use tokio::net::{ConnectFuture, TcpStream};
-use tokio::timer::Delay;
+use tokio::timer::{Delay, DelayQueue};
 use tokio_codec::{Decoder, Framed};
 
 
@@ -30,6 +30,15 @@ pub type CallbackSender = oneshot::Sender<io::Result<TarantoolResponse>>;
 static ERROR_SERVER_DISCONNECT: &str = "SERVER DISCONNECTED!";
 static ERROR_DISPATCH_THREAD_IS_DEAD: &str = "DISPATCH THREAD IS DEAD!";
 static ERROR_CLIENT_DISCONNECTED: &str = "CLIENT DISCONNECTED!";
+
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct ClientConfig {
+    addr: SocketAddr,
+    login: String,
+    password: String,
+    reconnect_time_ms: u64,
+    timeout_time_ms: Option<u64>,
+}
 
 enum DispatchState {
     New,
@@ -54,55 +63,122 @@ impl fmt::Display for DispatchState {
     }
 }
 
-pub struct Dispatch {
-    state: DispatchState,
+struct DispatchEngine {
     command_receiver: mpsc::UnboundedReceiver<(CommandPacket, CallbackSender)>,
     awaiting_callbacks: HashMap<RequestId, CallbackSender>,
-
-    addr: SocketAddr,
-    login: String,
-    password: String,
-    reconnect_time_ms: u64,
 
     buffered_command: Option<TarantoolFramedRequest>,
     command_counter: RequestId,
 }
 
-
-impl Dispatch {
-    pub fn new<S, S1>(
-        addr: SocketAddr,
-        login: S,
-        password: S1,
-        reconnect_time_ms:u64,
-        command_receiver: mpsc::UnboundedReceiver<(CommandPacket, CallbackSender)>,
-    ) -> Dispatch
-        where S: Into<String>, S1: Into<String> {
-        Dispatch {
-            state: DispatchState::New,
+impl DispatchEngine {
+    fn new(command_receiver: mpsc::UnboundedReceiver<(CommandPacket, CallbackSender)>) -> DispatchEngine {
+        DispatchEngine {
             command_receiver,
-            addr,
-            login: login.into(),
-            password: password.into(),
-            reconnect_time_ms,
             buffered_command: None,
             awaiting_callbacks: HashMap::new(),
             command_counter: 3,
         }
     }
 
-    fn try_send_buffered_command(buffered_command: &mut Option<TarantoolFramedRequest>, sink: &mut SplitSink<TarantoolFramed>) -> bool {
-        if let Some(command) = buffered_command.take() {
+    fn try_send_buffered_command(&mut self, sink: &mut SplitSink<TarantoolFramed>) -> bool {
+        if let Some(command) = self.buffered_command.take() {
             if let Ok(AsyncSink::NotReady(command)) = sink.start_send(command) {
-                //return command to buffer
-                *buffered_command = Some(command);
+//return command to buffer
+                self.buffered_command = Some(command);
                 return false;
             }
         }
         true
     }
 
-    fn get_auth_seq(stream: TcpStream, login: String, password: String) -> Box<Future<Item=TarantoolFramed, Error=io::Error> + Send> {
+    fn send_error_to_all(&mut self, error_description: &String) {
+        for (_, callback_sender) in self.awaiting_callbacks.drain() {
+            let _res = callback_sender.send(Err(io::Error::new(io::ErrorKind::Other, error_description.clone())));
+        }
+        self.buffered_command = None;
+
+        loop {
+            match self.command_receiver.poll() {
+                Ok(Async::Ready(Some((_, callback_sender)))) => {
+                    let _res = callback_sender.send(Err(io::Error::new(io::ErrorKind::Other, error_description.clone())));
+                }
+                _ => break
+            };
+        }
+    }
+
+    fn process_commands(&mut self, sink: &mut SplitSink<TarantoolFramed>) -> Poll<(), ()> {
+        let mut continue_send = self.try_send_buffered_command(sink);
+        while continue_send {
+            continue_send = match self.command_receiver.poll() {
+                Ok(Async::Ready(Some((command_packet, callback_sender)))) => {
+                    let request_id = self.increment_command_counter();
+                    self.awaiting_callbacks.insert(request_id, callback_sender);
+                    self.buffered_command = Some((request_id, TarantoolRequest::Command(command_packet)));
+                    self.try_send_buffered_command(sink)
+                }
+                Ok(Async::Ready(None)) => {
+//inbound sink is finished. close coroutine
+                    return Ok(Async::Ready(()));
+                }
+                _ => false,
+            };
+        }
+//skip results of poll complete
+        let _r = sink.poll_complete();
+        Ok(Async::NotReady)
+    }
+
+    fn process_tarantool_responses(&mut self, stream: &mut SplitStream<TarantoolFramed>) -> bool {
+        loop {
+            match stream.poll() {
+                Ok(Async::Ready(Some((request_id, command_packet)))) => {
+                    debug!("receive command! {} {:?} ", request_id, command_packet);
+                    self.awaiting_callbacks
+                        .remove(&request_id)
+                        .map(|sender| { sender.send(command_packet) });
+                }
+                Ok(Async::Ready(None)) | Err(_) => {
+                    return true;
+                }
+                _ => {
+                    return false;
+                }
+            }
+        }
+    }
+
+    fn increment_command_counter(&mut self) -> RequestId {
+        self.command_counter = self.command_counter + 1;
+        self.command_counter
+    }
+
+    fn clean_command_counter(&mut self) {
+        self.command_counter = 3;
+    }
+}
+
+pub struct Dispatch {
+    config: ClientConfig,
+    state: DispatchState,
+    engine: DispatchEngine,
+}
+
+
+impl Dispatch {
+    pub fn new(config: ClientConfig, command_receiver: mpsc::UnboundedReceiver<(CommandPacket, CallbackSender)>) -> Dispatch {
+        Dispatch {
+            state: DispatchState::New,
+            config,
+            engine: DispatchEngine::new(command_receiver),
+        }
+    }
+
+    fn get_auth_seq(stream: TcpStream, config: &ClientConfig) -> Box<Future<Item=TarantoolFramed, Error=io::Error> + Send> {
+        let login = config.login.clone();
+        let password = config.password.clone();
+
         Box::new(
             TarantoolCodec::new().framed(stream)
                 .into_future()
@@ -124,38 +200,6 @@ impl Dispatch {
                     }
                 }))
     }
-
-    fn send_error_to_all(awaiting_callbacks: &mut HashMap<RequestId, CallbackSender>,
-                         buffered_command: &mut Option<TarantoolFramedRequest>,
-                         command_receiver: &mut mpsc::UnboundedReceiver<(CommandPacket, CallbackSender)>,
-                         error_description: &String) {
-        for (_, callback_sender) in awaiting_callbacks.drain() {
-            let _res = callback_sender.send(Err(io::Error::new(io::ErrorKind::Other, error_description.clone())));
-        }
-        *buffered_command = None;
-
-        loop {
-            match command_receiver.poll() {
-                Ok(Async::Ready(Some((_, callback_sender)))) => {
-                    let _res = callback_sender.send(Err(io::Error::new(io::ErrorKind::Other, error_description.clone())));
-                }
-                _ => break
-            };
-        }
-    }
-
-    fn clean_command_counter(command_counter: &mut RequestId) {
-        *command_counter = 3;
-    }
-
-    fn increment_command_counter(command_counter: &mut RequestId) -> RequestId {
-        *command_counter = *command_counter + 1;
-        *command_counter
-    }
-}
-
-fn reconnect(addr: &SocketAddr) -> ConnectFuture {
-    TcpStream::connect(addr)
 }
 
 impl Future for Dispatch {
@@ -164,15 +208,16 @@ impl Future for Dispatch {
 
     fn poll(&mut self) -> Poll<(), ()> {
         debug!("poll ! {}", self.state);
+
         loop {
             let new_state = match self.state {
                 DispatchState::New => {
-                    Some(DispatchState::OnConnect(reconnect(&self.addr)))
+                    Some(DispatchState::OnConnect(TcpStream::connect(&self.config.addr)))
                 }
                 DispatchState::OnReconnect(ref mut error_description) => {
-                    error!("Reconnect! error={}",error_description);
-                    Dispatch::send_error_to_all(&mut self.awaiting_callbacks, &mut self.buffered_command, &mut self.command_receiver, error_description);
-                    let delay_future = Delay::new(Instant::now() + Duration::from_millis(self.reconnect_time_ms));
+                    error!("Reconnect! error={}", error_description);
+                    self.engine.send_error_to_all(error_description);
+                    let delay_future = Delay::new(Instant::now() + Duration::from_millis(self.config.reconnect_time_ms));
                     Some(DispatchState::OnSleep(delay_future))
                 }
                 DispatchState::OnSleep(ref mut delay_future) => {
@@ -184,7 +229,7 @@ impl Future for Dispatch {
                 }
                 DispatchState::OnConnect(ref mut connect_future) => {
                     match connect_future.poll() {
-                        Ok(Async::Ready(stream)) => Some(DispatchState::OnHandshake(Dispatch::get_auth_seq(stream, self.login.clone(), self.password.clone()))),
+                        Ok(Async::Ready(stream)) => Some(DispatchState::OnHandshake(Dispatch::get_auth_seq(stream, &self.config))),
                         Ok(Async::NotReady) => None,
                         Err(err) => Some(DispatchState::OnReconnect(err.to_string()))
                     }
@@ -193,7 +238,7 @@ impl Future for Dispatch {
                 DispatchState::OnHandshake(ref mut handshake_future) => {
                     match handshake_future.poll() {
                         Ok(Async::Ready(framed)) => {
-                            Dispatch::clean_command_counter(&mut self.command_counter);
+                            self.engine.clean_command_counter();
                             Some(DispatchState::OnProcessing(framed.split()))
                         }
                         Ok(Async::NotReady) => None,
@@ -202,44 +247,15 @@ impl Future for Dispatch {
                 }
 
                 DispatchState::OnProcessing((ref mut sink, ref mut stream)) => {
-                    let mut continue_send = Dispatch::try_send_buffered_command(&mut self.buffered_command, sink);
-                    while continue_send {
-                        continue_send = match self.command_receiver.poll() {
-                            Ok(Async::Ready(Some((command_packet, callback_sender)))) => {
-                                let request_id = Dispatch::increment_command_counter(&mut self.command_counter);
-                                self.awaiting_callbacks.insert(request_id, callback_sender);
-                                self.buffered_command = Some((request_id, TarantoolRequest::Command(command_packet)));
-                                Dispatch::try_send_buffered_command(&mut self.buffered_command, sink)
-                            }
-                            Ok(Async::Ready(None)) => {
-                                //inbound sink is finished. close coroutine
-//                                debug!("close coroutine");
-                                return Ok(Async::Ready(()));
-                            }
-                            _ => false,
-                        };
-                    }
-                    //skip results of poll complete
-                    let _r = sink.poll_complete();
-                    let mut is_error = false;
-
-                    loop {
-                        match stream.poll() {
-                            Ok(Async::Ready(Some((request_id, command_packet)))) => {
-                                debug!("receive command! {} {:?} ", request_id, command_packet);
-                                self.awaiting_callbacks
-                                    .remove(&request_id)
-                                    .map(|sender| { sender.send(command_packet) });
-                            }
-                            Ok(Async::Ready(None)) | Err(_) => {
-                                is_error = true;
-                                break;
-                            }
-                            _ => break
+                    match self.engine.process_commands(sink) {
+                        Ok(Async::Ready(())) => {
+//                          stop client !!! exit from event loop !
+                            return Ok(Async::Ready(()));
                         }
+                        _ => {}
                     }
 
-                    if is_error {
+                    if self.engine.process_tarantool_responses(stream) {
                         Some(DispatchState::OnReconnect(ERROR_SERVER_DISCONNECT.to_string()))
                     } else {
                         None
@@ -264,19 +280,43 @@ pub struct Client {
     dispatch: Arc<Mutex<Option<Dispatch>>>,
 }
 
-impl Client {
-    pub fn new<S, S1>(addr: SocketAddr, login: S, password: S1, reconnect_time_ms:u64) -> Client
+impl ClientConfig {
+    pub fn new<S, S1>(addr: SocketAddr, login: S, password: S1) -> ClientConfig
         where S: Into<String>,
               S1: Into<String> {
+        ClientConfig {
+            addr,
+            login: login.into(),
+            password: password.into(),
+            reconnect_time_ms: 10000,
+            timeout_time_ms: None,
+        }
+    }
+
+    pub fn set_timeout_time_ms(mut self, timeout_time_ms: u64) -> ClientConfig {
+        self.timeout_time_ms = Some(timeout_time_ms);
+        self
+    }
+
+
+    pub fn set_reconnect_time_ms(mut self, reconnect_time_ms: u64) -> ClientConfig {
+        self.reconnect_time_ms = reconnect_time_ms;
+        self
+    }
+
+    pub fn build(self) -> Client {
+        Client::new(self)
+    }
+}
+
+impl Client {
+    pub fn new(config: ClientConfig) -> Client {
         let (command_sender, command_receiver) = mpsc::unbounded();
 
         Client {
             command_sender,
             dispatch: Arc::new(Mutex::new(Some(Dispatch::new(
-                addr,
-                login,
-                password,
-                reconnect_time_ms,
+                config,
                 command_receiver,
             )))),
         }
@@ -309,7 +349,7 @@ impl Client {
     }
 
     ///call tarantool stored procedure with one parameter
-///
+    ///
     #[inline(always)]
     pub fn call_fn1<T1>(&self, function: &str, param1: &T1) -> impl Future<Item=TarantoolResponse, Error=io::Error>
         where T1: Serialize
@@ -380,7 +420,7 @@ impl Client {
 
     #[inline(always)]
 
-    //replace tuple in space by primary key
+//replace tuple in space by primary key
     /// space - space id
     /// tuple - sequence of fields(can be vec or rust tuple)
     /// # Examples

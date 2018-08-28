@@ -11,7 +11,7 @@ extern crate tokio_codec;
 
 
 use futures::{Future};
-use rusty_tarantool::tarantool::Client;
+use rusty_tarantool::tarantool::{Client, ClientConfig};
 use std::io;
 use std::sync::{Once, ONCE_INIT};
 use tokio::runtime::current_thread::Runtime;
@@ -30,7 +30,7 @@ fn init_client() -> Client {
     setup_logger();
 
     let addr = "127.0.0.1:3301".parse().unwrap();
-    Client::new(addr, "rust", "rust", 1000)
+    ClientConfig::new(addr, "rust", "rust").build()
 }
 
 pub fn test_result(r: Result<(), io::Error>) {

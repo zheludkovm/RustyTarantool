@@ -10,7 +10,7 @@ extern crate serde;
 extern crate rmp;
 
 use tokio::runtime::current_thread::Runtime;
-use rusty_tarantool::tarantool::Client;
+use rusty_tarantool::tarantool::{Client, ClientConfig};
 use futures::{Future};
 
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -23,7 +23,7 @@ fn main() {
     let mut rt = Runtime::new().unwrap();
 
     let addr = "127.0.0.1:3301".parse().unwrap();
-    let client = Client::new(addr,"rust","rust", 1000);
+    let client = ClientConfig::new(addr,"rust","rust").build();
     let start = Instant::now();
     let count = 1000000;
 

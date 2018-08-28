@@ -10,7 +10,7 @@ extern crate serde;
 extern crate rmp;
 
 use tokio::runtime::current_thread::Runtime;
-use rusty_tarantool::tarantool::Client;
+use rusty_tarantool::tarantool::{Client,ClientConfig};
 use futures::{Future};
 
 
@@ -19,7 +19,7 @@ fn main() {
     let mut rt = Runtime::new().unwrap();
 
     let addr = "127.0.0.1:3301".parse().unwrap();
-    let client = Client::new(addr, "rust", "rust", 1000);
+    let client = ClientConfig::new(addr, "rust", "rust").build();
 
     let response_future = client.call_fn2("test", &("param11", "param12") , &2)
         .and_then(|response| {
