@@ -37,7 +37,7 @@ println!("Connect to tarantool and call simple stored procedure!");
 let mut rt = Runtime::new().unwrap();
 
 let addr = "127.0.0.1:3301".parse().unwrap();
-let client = Client::new(addr, "rust", "rust", 1000);
+let client = ClientConfig::new(addr, "rust", "rust").build();
 
 let response_future = client.call_fn2("test", &("param11", "param12") , &2)
     .and_then(|response| {
