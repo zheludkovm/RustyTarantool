@@ -9,11 +9,10 @@ extern crate url;
 use futures::future;
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use hyper::header;
-use hyper::rt::{Future, Stream};
+use hyper::rt::{Future};
 use hyper::service::service_fn;
 use rusty_tarantool::tarantool;
 use std::collections::HashMap;
-use std::io;
 
 type BoxFut = Box<Future<Item=Response<Body>, Error=hyper::Error> + Send>;
 

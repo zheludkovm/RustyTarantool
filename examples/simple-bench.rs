@@ -10,7 +10,7 @@ extern crate serde;
 extern crate rmp;
 
 use tokio::runtime::current_thread::Runtime;
-use rusty_tarantool::tarantool::{Client, ClientConfig};
+use rusty_tarantool::tarantool::{ClientConfig};
 use futures::{Future};
 
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -47,5 +47,5 @@ fn main() {
         rt.spawn(resp);
     };
 
-    rt.run();
+    let _res = rt.run();
 }

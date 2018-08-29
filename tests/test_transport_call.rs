@@ -19,7 +19,6 @@ use tokio_codec::Decoder;
 use tokio::net::{TcpStream};
 
 use futures::{Stream, Sink, Future};
-use futures::future;
 
 #[test]
 fn test() {

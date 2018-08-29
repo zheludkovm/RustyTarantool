@@ -11,6 +11,7 @@ use std::io;
 use std::io::Cursor;
 
 
+
 pub fn decode_serde<'de, T, R>(r:R) -> io::Result<T>
     where T: Deserialize<'de>,R: io::Read
 {
@@ -28,6 +29,7 @@ pub fn serialize_to_vec_u8<S: Serialize>(v: &S) -> io::Result<Vec<u8>> {
     Ok(buf)
 }
 
+
 pub fn map_err_to_io<E>(e: E) -> io::Error
     where E: Into<Box<error::Error + Send + Sync>>
 {
@@ -35,6 +37,7 @@ pub fn map_err_to_io<E>(e: E) -> io::Error
     io::Error::new(io::ErrorKind::Other, "")
 }
 
+#[allow(dead_code)]
 pub fn make_map_err_to_io() -> io::Error
 {
     error!("make Error! ");
@@ -75,6 +78,7 @@ pub fn get_map_value(map: &Vec<(Value, Value)>, key: u64) -> io::Result<u64> {
     .ok_or_else(||{io::Error::new(io::ErrorKind::Other, "Not found header !")})
 }
 
+#[allow(dead_code)]
 pub fn transform_u32_to_array_of_u8(x: u32) -> [u8; 4] {
     let b1: u8 = ((x >> 24) & 0xff) as u8;
     let b2: u8 = ((x >> 16) & 0xff) as u8;
