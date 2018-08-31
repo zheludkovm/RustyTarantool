@@ -13,6 +13,11 @@ pub type TarantoolFramedRequest = (RequestId, TarantoolRequest);
 const GREETINGS_HEADER_LENGTH: usize = 9;
 const GREETINGS_HEADER: &str = "Tarantool";
 
+
+///
+/// Tokio framed codec for tarantool
+/// use it if you want manually set it on your tokio framed transport
+///
 #[derive(Debug)]
 pub struct TarantoolCodec {
     is_greetings_received: bool,
@@ -27,7 +32,6 @@ impl TarantoolCodec {
         }
     }
 }
-
 
 impl Decoder for TarantoolCodec {
     type Item = (RequestId, io::Result<TarantoolResponse>);

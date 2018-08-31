@@ -1,6 +1,7 @@
 //! Tarantool async tokio based client.
 //!
 //! main features : auth by login and password, auto reconnect, optional timeout
+//! 
 //! supported tarantool api :
 //! - call function
 //! - select
@@ -13,6 +14,7 @@
 //!
 //! # Examples
 //!
+//! ```rust
 //! let mut rt = Runtime::new().unwrap();
 //!
 //! let addr = "127.0.0.1:3301".parse().unwrap();
@@ -28,7 +30,7 @@
 //!     Err(e) => println!("err={:?}", e),
 //!     Ok(res) => println!("stored procedure response ={:?}", res)
 //! }
-//!
+//! ```
 //!
 
 extern crate sha1;

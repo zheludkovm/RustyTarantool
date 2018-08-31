@@ -25,6 +25,14 @@ pub static ERROR_DISPATCH_THREAD_IS_DEAD: &str = "DISPATCH THREAD IS DEAD!";
 pub static ERROR_CLIENT_DISCONNECTED: &str = "CLIENT DISCONNECTED!";
 static ERROR_TIMEOUT: &str = "TIMEOUT!";
 
+///
+/// Tarantool client config 
+///
+/// # Examples
+///
+/// let client = ClientConfig::new(addr, "rust", "rust").set_timeout_time_ms(1000).set_reconnect_time_ms(10000).build();
+///
+
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ClientConfig {
     addr: SocketAddr,

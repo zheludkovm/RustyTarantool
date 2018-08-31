@@ -9,12 +9,14 @@ use tarantool::tools;
 use bytes::{Bytes ,IntoBuf};
 
 
+/// tarantool auth packet
 #[derive(Debug)]
 pub struct AuthPacket {
     pub login: String,
     pub password: String,
 }
 
+/// tarantool packet intended for serialize and cross thread send
 #[derive(Debug,Clone)]
 pub struct CommandPacket {
     pub code: Code,
@@ -22,6 +24,7 @@ pub struct CommandPacket {
     pub command_field: Vec<(Key, Vec<u8>)>,
 }
 
+/// Tarantool request enum (auth or ordinary packet)
 #[derive(Debug)]
 pub enum TarantoolRequest {
     Auth(AuthPacket),
@@ -29,7 +32,12 @@ pub enum TarantoolRequest {
 }
 
 
-
+/// Tarantool response struct
+///
+/// use any decode method to decode tarantool response to custom struct by serde
+/// please look examples 
+/// https://github.com/zheludkovm/RustyTarantool/tree/master/examples
+///
 #[derive(Debug)]
 pub struct TarantoolResponse {
      code: u64,
@@ -80,12 +88,14 @@ impl TarantoolResponse {
         TarantoolResponse{code, data}
     }
 
+    /// decode tarantool response to any serder deserializable struct
     pub fn decode<'de, T>(self) -> io::Result<T>
         where T: Deserialize<'de>
     {
         tools::decode_serde(self.data.into_buf())
     }
 
+    /// decode tarantool response to tuple wih one element and return this element
     pub fn decode_single<'de, T>(self) -> io::Result<T>
         where T: Deserialize<'de>
     {
@@ -93,12 +103,14 @@ impl TarantoolResponse {
         Ok(res)
     }
 
+    /// decode tarantool response to tuple of two elements
     pub fn decode_pair<'de, T1, T2>(self) -> io::Result<(T1,T2)>
         where T1: Deserialize<'de>,T2: Deserialize<'de>
     {
         Ok(tools::decode_serde(self.data.into_buf())?)
     }
 
+    ///decode tarantool response to three elements
     pub fn decode_trio<'de, T1, T2, T3>(self) -> io::Result<(T1,T2,T3)>
         where T1: Deserialize<'de>,T2: Deserialize<'de>,T3: Deserialize<'de>
     {

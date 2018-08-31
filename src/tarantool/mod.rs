@@ -6,7 +6,7 @@ use std::io;
 use std::sync::{Arc, Mutex};
 use tarantool::dispatch::{CallbackSender, Dispatch, ERROR_CLIENT_DISCONNECTED, ERROR_DISPATCH_THREAD_IS_DEAD};
 pub use tarantool::dispatch::ClientConfig;
-use tarantool::packets::{ CommandPacket,  TarantoolResponse};
+pub use tarantool::packets::{ CommandPacket,  TarantoolResponse, TarantoolRequest};
 use tokio;
 
 
@@ -21,6 +21,15 @@ impl ClientConfig {
     }
 }
 
+///
+/// API to tarantool.
+///
+/// Create client by call build() on ClientConfig.
+/// 
+/// # Examples
+///
+/// let client = ClientConfig::new(addr, "rust", "rust").set_timeout_time_ms(1000).set_reconnect_time_ms(10000).build();
+///
 #[derive(Clone)]
 pub struct Client {
     command_sender: mpsc::UnboundedSender<(CommandPacket, CallbackSender)>,
@@ -28,6 +37,8 @@ pub struct Client {
 }
 
 impl Client {
+
+    /// manually create client by consume Client Config
     pub fn new(config: ClientConfig) -> Client {
         let (command_sender, command_receiver) = mpsc::unbounded();
 
@@ -40,6 +51,7 @@ impl Client {
         }
     }
 
+    /// send any command you manually create, this method is low level and not intended to be used
     pub fn send_command(&self, req: CommandPacket) -> impl Future<Item=TarantoolResponse, Error=io::Error> {
         let dispatch = self.dispatch.clone();
 
@@ -59,6 +71,32 @@ impl Client {
             .and_then(|r| { r })
     }
 
+    /// call tarantool stored procedure
+    ///
+    /// params mast be serializable to MsgPack tuple by Serde - rust tuple or vector or struct (by default structs serialized as tuple)
+    ///
+    /// order of fields in serializes tuple is order od parameters of procedure
+    ///
+    ///  # Examples
+    ///
+    /// lua function on tarantool
+    /// ```lua
+    /// function test(a,b)
+    ///   return a,b,11
+    ///  end
+    /// ```
+    ///
+    /// rust code
+    /// ```rust
+    /// let resp = client.call_fn("test", &(("aa", "aa"), 1))
+    //        .and_then(move |response| {
+    //            println!("response2: {:?}", response);
+    //            let s: (Vec<String>, Vec<u64>) = response.decode_pair()?;
+    //            println!("resp value={:?}", s);
+    //            assert_eq!((vec!["aa".to_string(), "aa".to_string()], vec![1]), s);
+    //            Ok(())
+    //        })
+    /// ```
     #[inline(always)]
     pub fn call_fn<T>(&self, function: &str, params: &T) -> impl Future<Item=TarantoolResponse, Error=io::Error>
         where T: Serialize
@@ -76,6 +114,14 @@ impl Client {
     }
 
     ///call tarantool stored procedure with two parameters
+    ///
+    /// # Examples
+    ///
+    /// let response_future = client.call_fn2("test", &("param11", "param12") , &2)
+    //        .and_then(|response| {
+    //            let res : ((String,String), (u64,), (Option<u64>,)) = response.decode_trio()?;
+    //            Ok(res)
+    //        }) ;
     ///
     #[inline(always)]
     pub fn call_fn2<T1, T2>(&self, function: &str, param1: &T1, param2: &T2) -> impl Future<Item=TarantoolResponse, Error=io::Error>
@@ -115,12 +161,12 @@ impl Client {
     }
 
     ///call "select" from tarantool
-    /// space - i32 space id
-    /// index - i32 index id
-    /// key - key part used for select, may be sequence (vec or tuple)
-    /// offset - i32 select offset
-    /// limit - i32 limit of rows
-    /// iterator - type of iterator
+    /// - space - i32 space id
+    /// - index - i32 index id
+    /// - key - key part used for select, may be sequence (vec or tuple)
+    /// - offset - i32 select offset
+    /// - limit - i32 limit of rows
+    /// - iterator - type of iterator
     ///
     #[inline(always)]
     pub fn select<T>(&self, space: i32, index: i32, key: &T, offset: i32, limit: i32, iterator: i32) -> impl Future<Item=TarantoolResponse, Error=io::Error> where T: Serialize {
@@ -128,8 +174,8 @@ impl Client {
     }
 
     ///insert tuple to space
-    /// space - space id
-    /// tuple - sequence of fields(can be vec or rust tuple)
+    /// - space - space id
+    /// - tuple - sequence of fields(can be vec or rust tuple)
     ///
     #[inline(always)]
     pub fn insert<T>(&self, space: i32, tuple: &T) -> impl Future<Item=TarantoolResponse, Error=io::Error> where T: Serialize {
@@ -138,10 +184,12 @@ impl Client {
 
     #[inline(always)]
 
-//replace tuple in space by primary key
-    /// space - space id
-    /// tuple - sequence of fields(can be vec or rust tuple)
+    ///replace tuple in space by primary key
+    /// - space - space id
+    /// - tuple - sequence of fields(can be vec or rust tuple)
+    ///
     /// # Examples
+    /// ```rust
     /// let tuple_replace= (3,"test_insert","replace");
     /// client.replace(SPACE_ID, &tuple_replace)
     ///
@@ -150,10 +198,12 @@ impl Client {
     }
 
     ///update row in tarantool
-    /// space - space id
-    /// key - sequence of fields(rust tuple or vec)
-    /// args - sequence of update operations, for example (('=',2,"test_update"),)
+    /// - space - space id
+    /// - key - sequence of fields(rust tuple or vec)
+    /// - args - sequence of update operations, for example (('=',2,"test_update"),)
+    ///
     /// # Examples
+    /// ```rust
     /// let tuple= (3,"test_insert");
     /// let update_op= (('=',2,"test_update"),);
     /// client.update(SPACE_ID, &tuple, &update_op)
@@ -164,7 +214,9 @@ impl Client {
     }
 
     ///upsert row in tuple
+    ///
     /// # Examples
+    /// ```rust
     /// let key= (4,"test_upsert");
     /// let update_op= (('=',2,"test_update_upsert"),);
     /// client.upsert(SPACE_ID,&key, &key,&update_op)
@@ -175,7 +227,9 @@ impl Client {
     }
 
     ///delete row in space
+    ///
     /// # Examples
+    /// ```rust
     /// let tuple= (3,"test_insert");
     /// client.delete(SPACE_ID,&tuple)
     #[inline(always)]
@@ -184,7 +238,10 @@ impl Client {
     }
 
     ///eval expression in tarantool
+    /// 
     /// # Examples
+    ///
+    /// ```rust
     /// client.eval("return ...\n".to_string(),&(1,2))
     ///
     #[inline(always)]
