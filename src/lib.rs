@@ -14,7 +14,7 @@
 //!
 //! # Examples
 //!
-//! ```rust
+//! ```text
 //! let mut rt = Runtime::new().unwrap();
 //!
 //! let addr = "127.0.0.1:3301".parse().unwrap();

@@ -7,6 +7,9 @@ repository = "https://github.com/zheludkovm/RustyTarantool"
 categories = ["asynchronous", "network-programming"]
 keywords = ["asynchronous", "tarantool", "protocol" , "api"]
 version = "0.1.0"
+exclude = [
+    "test-tarantool/*"
+]
 
 [lib]
 name = "rusty_tarantool"
@@ -14,7 +17,7 @@ path = "src/lib.rs"
 
 [dependencies]
 maplit = "1.0.0"
-futures = "0.1.14"
+futures = "0.1"
 bytes = "0.4"
 log = "0.4.1"
 env_logger = "0.5.3"
@@ -23,17 +26,18 @@ byteorder = "1.1.0"
 tokio = "0.1"
 tokio-codec = "0.1"
 
-serde = "1.0.15"
+serde = "1.0"
 serde_derive = "1.0"
-rmp = "0.8.7"
-rmp-serde = "0.13.7"
-rmp-serialize = "0.8.0"
-rmpv = { version = "0.4.0", features = ["with-serde"] }
+rmp = "0.8"
+rmp-serde = "0.13"
+rmp-serialize = "0.8"
+rmpv = { version = "0.4", features = ["with-serde"] }
 base64 = "0.2.1"
 sha1 = "0.2.0"
-rustc-serialize = "0.3.22"
+rustc-serialize = "0.3"
 
 [dev-dependencies]
 hyper = "0.12"
 serde_json = "1.0"
 url = "1.7.0"
+

@@ -87,16 +87,16 @@ impl Client {
     /// ```
     ///
     /// rust code
-    /// ```rust
+    /// ```text
     /// let resp = client.call_fn("test", &(("aa", "aa"), 1))
-    //        .and_then(move |response| {
-    //            println!("response2: {:?}", response);
-    //            let s: (Vec<String>, Vec<u64>) = response.decode_pair()?;
-    //            println!("resp value={:?}", s);
-    //            assert_eq!((vec!["aa".to_string(), "aa".to_string()], vec![1]), s);
-    //            Ok(())
-    //        })
-    /// ```
+    ///        .and_then(move |response| {
+    ///            println!("response2: {:?}", response);
+    ///            let s: (Vec<String>, Vec<u64>) = response.decode_pair()?;
+    ///            println!("resp value={:?}", s);
+    ///            assert_eq!((vec!["aa".to_string(), "aa".to_string()], vec![1]), s);
+    ///            Ok(())
+    ///        })
+    ///
     #[inline(always)]
     pub fn call_fn<T>(&self, function: &str, params: &T) -> impl Future<Item=TarantoolResponse, Error=io::Error>
         where T: Serialize
@@ -117,11 +117,12 @@ impl Client {
     ///
     /// # Examples
     ///
+    ///```text
     /// let response_future = client.call_fn2("test", &("param11", "param12") , &2)
-    //        .and_then(|response| {
-    //            let res : ((String,String), (u64,), (Option<u64>,)) = response.decode_trio()?;
-    //            Ok(res)
-    //        }) ;
+    ///        .and_then(|response| {
+    ///            let res : ((String,String), (u64,), (Option<u64>,)) = response.decode_trio()?;
+    ///            Ok(res)
+    ///        }) ;
     ///
     #[inline(always)]
     pub fn call_fn2<T1, T2>(&self, function: &str, param1: &T1, param2: &T2) -> impl Future<Item=TarantoolResponse, Error=io::Error>
@@ -189,7 +190,7 @@ impl Client {
     /// - tuple - sequence of fields(can be vec or rust tuple)
     ///
     /// # Examples
-    /// ```rust
+    /// ```text
     /// let tuple_replace= (3,"test_insert","replace");
     /// client.replace(SPACE_ID, &tuple_replace)
     ///
@@ -203,7 +204,7 @@ impl Client {
     /// - args - sequence of update operations, for example (('=',2,"test_update"),)
     ///
     /// # Examples
-    /// ```rust
+    /// ```text
     /// let tuple= (3,"test_insert");
     /// let update_op= (('=',2,"test_update"),);
     /// client.update(SPACE_ID, &tuple, &update_op)
@@ -216,7 +217,7 @@ impl Client {
     ///upsert row in tuple
     ///
     /// # Examples
-    /// ```rust
+    /// ```text
     /// let key= (4,"test_upsert");
     /// let update_op= (('=',2,"test_update_upsert"),);
     /// client.upsert(SPACE_ID,&key, &key,&update_op)
@@ -229,7 +230,7 @@ impl Client {
     ///delete row in space
     ///
     /// # Examples
-    /// ```rust
+    /// ```text
     /// let tuple= (3,"test_insert");
     /// client.delete(SPACE_ID,&tuple)
     #[inline(always)]
@@ -241,7 +242,7 @@ impl Client {
     /// 
     /// # Examples
     ///
-    /// ```rust
+    /// ```text
     /// client.eval("return ...\n".to_string(),&(1,2))
     ///
     #[inline(always)]

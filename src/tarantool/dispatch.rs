@@ -29,8 +29,11 @@ static ERROR_TIMEOUT: &str = "TIMEOUT!";
 /// Tarantool client config 
 ///
 /// # Examples
-///
-/// let client = ClientConfig::new(addr, "rust", "rust").set_timeout_time_ms(1000).set_reconnect_time_ms(10000).build();
+/// ```text
+/// let client = ClientConfig::new(addr, "rust", "rust")
+///            .set_timeout_time_ms(1000)
+///            .set_reconnect_time_ms(10000)
+///            .build();
 ///
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
