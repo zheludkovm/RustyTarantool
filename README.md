@@ -12,9 +12,10 @@ Use tokio.io as base client framework
 
 ## Usage
 
-add dependency
+[![Latest Version]][crates.io]
 
-rusty_tarantool = "0.1.0"
+[Latest Version]: https://img.shields.io/crates/v/rusty_tarantool.svg
+[crates.io]: https://crates.io/crates/rusty_tarantool
 
 ## Example
 
