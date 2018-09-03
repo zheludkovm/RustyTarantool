@@ -10,6 +10,12 @@ https://github.com/tarantool/tarantool-java
 
 Use tokio.io as base client framework
 
+## Usage
+
+add dependency
+
+rusty_tarantool = "0.1.0"
+
 ## Example
 
 Call echo stored procedure

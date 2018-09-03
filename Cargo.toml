@@ -10,6 +10,7 @@ version = "0.1.0"
 exclude = [
     "test-tarantool/*"
 ]
+readme = "README.md"
 
 [lib]
 name = "rusty_tarantool"
@@ -40,4 +41,3 @@ rustc-serialize = "0.3"
 hyper = "0.12"
 serde_json = "1.0"
 url = "1.7.0"
-
