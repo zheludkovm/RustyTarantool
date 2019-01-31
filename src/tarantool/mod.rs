@@ -1,14 +1,15 @@
+use std::io;
+use std::sync::{Arc, RwLock, Mutex};
+
 use futures::{Future, IntoFuture};
 use futures::sync::mpsc;
 use futures::sync::oneshot;
 use serde::Serialize;
-use std::io;
-use std::sync::{Arc, Mutex};
-use tarantool::dispatch::{CallbackSender, Dispatch, ERROR_CLIENT_DISCONNECTED, ERROR_DISPATCH_THREAD_IS_DEAD};
-pub use tarantool::dispatch::ClientConfig;
-pub use tarantool::packets::{ CommandPacket,  TarantoolResponse, TarantoolRequest};
 use tokio;
 
+use tarantool::dispatch::{CallbackSender, Dispatch, ERROR_CLIENT_DISCONNECTED, ERROR_DISPATCH_THREAD_IS_DEAD};
+pub use tarantool::dispatch::{ClientConfig, ClientStatus};
+pub use tarantool::packets::{CommandPacket, TarantoolRequest, TarantoolResponse};
 
 pub mod packets;
 pub mod codec;
@@ -34,21 +35,30 @@ impl ClientConfig {
 pub struct Client {
     command_sender: mpsc::UnboundedSender<(CommandPacket, CallbackSender)>,
     dispatch: Arc<Mutex<Option<Dispatch>>>,
+    status: Arc<RwLock<ClientStatus>>,
 }
 
 impl Client {
-
     /// manually create client by consume Client Config
     pub fn new(config: ClientConfig) -> Client {
         let (command_sender, command_receiver) = mpsc::unbounded();
+
+        let status = Arc::new(RwLock::new(ClientStatus::New));
 
         Client {
             command_sender,
             dispatch: Arc::new(Mutex::new(Some(Dispatch::new(
                 config,
                 command_receiver,
+                status.clone(),
             )))),
+            status,
         }
+    }
+
+    /// return client status
+    pub fn get_status(&self) -> ClientStatus {
+        self.status.read().unwrap().clone()
     }
 
     /// send any command you manually create, this method is low level and not intended to be used
@@ -62,6 +72,7 @@ impl Client {
             .and_then(move |_r| {
                 if let Some(extracted_dispatch) = dispatch.lock().unwrap().take() {
                     debug!("spawn coroutine!");
+                    //lazy spawning main coroutine in first tarantool call
                     tokio::spawn(extracted_dispatch);
                 }
                 callback_receiver
@@ -184,7 +195,6 @@ impl Client {
     }
 
     #[inline(always)]
-
     ///replace tuple in space by primary key
     /// - space - space id
     /// - tuple - sequence of fields(can be vec or rust tuple)
@@ -248,5 +258,17 @@ impl Client {
     #[inline(always)]
     pub fn eval<T>(&self, expression: String, args: &T) -> impl Future<Item=TarantoolResponse, Error=io::Error> where T: Serialize {
         self.send_command(CommandPacket::eval(expression, args).unwrap())
+    }
+
+    ///ping tarantool server, return empty response in success
+    ///
+    /// # Examples
+    ///
+    /// ```text
+    /// client.ping()
+    ///
+    #[inline(always)]
+    pub fn ping(&self) -> impl Future<Item=TarantoolResponse, Error=io::Error> {
+        self.send_command(CommandPacket::ping().unwrap())
     }
 }

@@ -56,7 +56,7 @@ pub enum Code {
     EVAL = 0x08,
     UPSERT = 0x09,
     CALL = 0x010,
-    PING = 0x064,
+    PING = 0x040,
     SUBSCRIBE = 0x066,
 }
 
@@ -225,6 +225,17 @@ impl CommandPacket {
                 code: Code::EVAL,
                 internal_fields: vec![(Key::EXPRESSION,Value::from(expression))],
                 command_field: vec![(Key::TUPLE, tools::serialize_to_vec_u8(args)? )]
+            }
+        )
+    }
+
+    pub fn ping() -> io::Result<CommandPacket>
+    {
+        Ok(
+            CommandPacket {
+                code: Code::PING,
+                internal_fields: vec![],
+                command_field: vec![]
             }
         )
     }

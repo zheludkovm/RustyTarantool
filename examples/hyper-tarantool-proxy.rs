@@ -6,13 +6,15 @@ extern crate serde_derive;
 extern crate serde_json;
 extern crate url;
 
+use std::collections::HashMap;
+
 use futures::future;
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use hyper::header;
-use hyper::rt::{Future};
+use hyper::rt::Future;
 use hyper::service::service_fn;
+
 use rusty_tarantool::tarantool;
-use std::collections::HashMap;
 
 type BoxFut = Box<Future<Item=Response<Body>, Error=hyper::Error> + Send>;
 
@@ -48,29 +50,32 @@ fn http_handler(req: Request<Body>, tarantool: &tarantool::Client) -> BoxFut {
                 None => (None, None, None)
             };
 
-            let response = tarantool.call_fn3("test_search", &country_name, &region, &sub_region)
-                .and_then(move |response| {
-                    Ok(CountryResponse { countries: response.decode_single() ? })
-                })
-                .map(|result| {
-                    let body = serde_json::to_string(&result).unwrap();
-                    Response::builder()
-                        .header(header::CONTENT_TYPE, "application/json")
-                        .status(StatusCode::OK)
-                        .body(body.into())
-                        .unwrap()
-                })
-                .or_else(|err| {
-                    future::ok(
+            let tarantool_c = tarantool.clone();
+            let response =
+                tarantool.call_fn3("test_search", &country_name, &region, &sub_region)
+                    .and_then(move |response| {
+                        Ok(CountryResponse { countries: response.decode_single()? })
+                    })
+                    .map(|result| {
+                        let body = serde_json::to_string(&result).unwrap();
                         Response::builder()
-                            .header(header::CONTENT_TYPE, "text/plain")
-                            .body(format!("Internal error: {}", err.to_string()).into())
+                            .header(header::CONTENT_TYPE, "application/json")
+                            .status(StatusCode::OK)
+                            .body(body.into())
                             .unwrap()
-                    )
-                });
+                    })
+                    .or_else(move |err| {
+                        println!("status = {:?}", tarantool_c.get_status());
+
+                        future::ok(
+                            Response::builder()
+                                .header(header::CONTENT_TYPE, "text/plain")
+                                .body(format!("Internal error: {}", err.to_string()).into())
+                                .unwrap()
+                        )
+                    });
             Box::new(response)
         }
-
         _ => {
             let resp = Response::builder()
                 .header(header::CONTENT_TYPE, "text/plain")
@@ -90,9 +95,9 @@ fn main() {
         let tarantool = tarantool::ClientConfig::new(
             "127.0.0.1:3301".parse().unwrap(),
             "rust",
-            "rust"
+            "rust",
         ).build();
-        
+
         service_fn(move |body| {
             http_handler(body, &tarantool)
         })

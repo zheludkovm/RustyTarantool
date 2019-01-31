@@ -1,21 +1,25 @@
+use std::boxed::Box;
+use std::collections::HashMap;
+use std::fmt;
+use std::fmt::Write;
+use std::io;
+use std::net::SocketAddr;
+use std::string::ToString;
+use std::sync::{Arc, RwLock};
+use std::time::{Duration, Instant};
+
 use futures::{Async, AsyncSink, Future, IntoFuture, Poll, Sink, Stream};
 use futures::future;
 use futures::stream::{SplitSink, SplitStream};
 use futures::sync::mpsc;
 use futures::sync::oneshot;
-use std::boxed::Box;
-use std::collections::HashMap;
-use std::fmt;
-use std::io;
-use std::net::SocketAddr;
-use std::time::{Duration, Instant};
-use tarantool::codec::{RequestId, TarantoolCodec, TarantoolFramedRequest};
-use tarantool::packets::{AuthPacket, CommandPacket, TarantoolRequest, TarantoolResponse};
-use tokio::net::{ConnectFuture, TcpStream};
+use tokio::net::tcp::{ConnectFuture, TcpStream};
 use tokio::timer::{Delay, DelayQueue};
 use tokio::timer::delay_queue;
 use tokio_codec::{Decoder, Framed};
 
+use tarantool::codec::{RequestId, TarantoolCodec, TarantoolFramedRequest};
+use tarantool::packets::{AuthPacket, CommandPacket, TarantoolRequest, TarantoolResponse};
 
 pub type TarantoolFramed = Framed<TcpStream, TarantoolCodec>;
 pub type CallbackSender = oneshot::Sender<io::Result<TarantoolResponse>>;
@@ -35,7 +39,6 @@ static ERROR_TIMEOUT: &str = "TIMEOUT!";
 ///            .set_reconnect_time_ms(10000)
 ///            .build();
 ///
-
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 pub struct ClientConfig {
     addr: SocketAddr,
@@ -70,6 +73,14 @@ impl ClientConfig {
     }
 }
 
+#[derive(Clone, Debug)]
+pub enum ClientStatus {
+    New,
+    Connecting,
+    Connected,
+    Reconnecting(String),
+}
+
 enum DispatchState {
     New,
     OnConnect(ConnectFuture),
@@ -77,18 +88,32 @@ enum DispatchState {
     OnProcessing((SplitSink<TarantoolFramed>, SplitStream<TarantoolFramed>)),
 
     OnReconnect(String),
-    OnSleep(Delay),
+    OnSleep(Delay, String),
 }
 
 impl fmt::Display for DispatchState {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let status = match *self {
+            DispatchState::New => "New",
+            DispatchState::OnConnect(_) => "OnConnect",
+            DispatchState::OnHandshake(_) => "OnHandshake",
+            DispatchState::OnProcessing(_) => "OnProcessing",
+            DispatchState::OnReconnect(_) => "OnReconnect",
+            DispatchState::OnSleep(_, _) => "OnSleep",
+        };
+        write!(f, "{}", status)
+    }
+}
+
+impl DispatchState {
+    fn get_client_status(&self) -> ClientStatus {
         match *self {
-            DispatchState::New => write!(f, "New"),
-            DispatchState::OnConnect(_) => write!(f, "OnConnect"),
-            DispatchState::OnHandshake(_) => write!(f, "OnHandshake"),
-            DispatchState::OnProcessing(_) => write!(f, "OnProcessing"),
-            DispatchState::OnReconnect(_) => write!(f, "OnReconnect"),
-            DispatchState::OnSleep(_) => write!(f, "OnSleep"),
+            DispatchState::New => ClientStatus::New,
+            DispatchState::OnConnect(_) => ClientStatus::Connecting,
+            DispatchState::OnHandshake(_) => ClientStatus::Connecting,
+            DispatchState::OnProcessing(_) => ClientStatus::Connected,
+            DispatchState::OnReconnect(ref error_message) => ClientStatus::Reconnecting(error_message.clone()),
+            DispatchState::OnSleep(_, ref error_message) => ClientStatus::Reconnecting(error_message.clone()),
         }
     }
 }
@@ -237,17 +262,24 @@ pub struct Dispatch {
     config: ClientConfig,
     state: DispatchState,
     engine: DispatchEngine,
+    status: Arc<RwLock<ClientStatus>>,
 }
 
-
 impl Dispatch {
-    pub fn new(config: ClientConfig, command_receiver: mpsc::UnboundedReceiver<(CommandPacket, CallbackSender)>) -> Dispatch {
+
+    pub fn new(config: ClientConfig, command_receiver: mpsc::UnboundedReceiver<(CommandPacket, CallbackSender)>, status: Arc<RwLock<ClientStatus>>) -> Dispatch {
         let timeout_time_ms = config.timeout_time_ms.clone();
         Dispatch {
             state: DispatchState::New,
             config,
             engine: DispatchEngine::new(command_receiver, timeout_time_ms),
+            status,
         }
+    }
+
+    fn update_status(&mut self) {
+        let mut status = self.status.write().unwrap();
+        *status = self.state.get_client_status();
     }
 
     fn get_auth_seq(stream: TcpStream, config: &ClientConfig) -> Box<Future<Item=TarantoolFramed, Error=io::Error> + Send> {
@@ -277,6 +309,7 @@ impl Dispatch {
     }
 }
 
+
 impl Future for Dispatch {
     type Item = ();
     type Error = ();
@@ -289,13 +322,13 @@ impl Future for Dispatch {
                 DispatchState::New => {
                     Some(DispatchState::OnConnect(TcpStream::connect(&self.config.addr)))
                 }
-                DispatchState::OnReconnect(ref mut error_description) => {
+                DispatchState::OnReconnect(ref error_description) => {
                     error!("Reconnect! error={}", error_description);
                     self.engine.send_error_to_all(error_description);
                     let delay_future = Delay::new(Instant::now() + Duration::from_millis(self.config.reconnect_time_ms));
-                    Some(DispatchState::OnSleep(delay_future))
+                    Some(DispatchState::OnSleep(delay_future, error_description.clone()))
                 }
-                DispatchState::OnSleep(ref mut delay_future) => {
+                DispatchState::OnSleep(ref mut delay_future, _) => {
                     match delay_future.poll() {
                         Ok(Async::Ready(_)) => Some(DispatchState::New),
                         Ok(Async::NotReady) => None,
@@ -341,6 +374,7 @@ impl Future for Dispatch {
 
             if let Some(new_state_value) = new_state {
                 self.state = new_state_value;
+                self.update_status();
             } else {
                 break;
             }

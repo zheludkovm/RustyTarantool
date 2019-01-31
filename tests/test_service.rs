@@ -163,3 +163,18 @@ fn test_eval() {
     ;
     test_result(rt.block_on(resp));
 }
+
+#[test]
+fn test_ping() {
+    let mut rt = Runtime::new().unwrap();
+    let client = init_client();
+
+    let resp =
+        client.ping()
+            .and_then(move |response| {
+                println!("response ping: {:?}", response);
+                Ok(())
+            })
+        ;
+    test_result(rt.block_on(resp));
+}
