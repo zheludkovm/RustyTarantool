@@ -1,7 +1,6 @@
 use std::boxed::Box;
 use std::collections::HashMap;
 use std::fmt;
-use std::fmt::Write;
 use std::io;
 use std::net::SocketAddr;
 use std::string::ToString;
@@ -23,6 +22,7 @@ use tarantool::packets::{AuthPacket, CommandPacket, TarantoolRequest, TarantoolR
 
 pub type TarantoolFramed = Framed<TcpStream, TarantoolCodec>;
 pub type CallbackSender = oneshot::Sender<io::Result<TarantoolResponse>>;
+pub type ReconnectNotifySender = mpsc::UnboundedSender<ClientStatus>;
 
 static ERROR_SERVER_DISCONNECT: &str = "SERVER DISCONNECTED!";
 pub static ERROR_DISPATCH_THREAD_IS_DEAD: &str = "DISPATCH THREAD IS DEAD!";
@@ -75,10 +75,12 @@ impl ClientConfig {
 
 #[derive(Clone, Debug)]
 pub enum ClientStatus {
-    New,
+    Init,
     Connecting,
+    Handshaking,
     Connected,
-    Reconnecting(String),
+    Disconnecting(String),
+    Disconnected(String),
 }
 
 enum DispatchState {
@@ -108,12 +110,12 @@ impl fmt::Display for DispatchState {
 impl DispatchState {
     fn get_client_status(&self) -> ClientStatus {
         match *self {
-            DispatchState::New => ClientStatus::New,
+            DispatchState::New => ClientStatus::Init,
             DispatchState::OnConnect(_) => ClientStatus::Connecting,
-            DispatchState::OnHandshake(_) => ClientStatus::Connecting,
+            DispatchState::OnHandshake(_) => ClientStatus::Handshaking,
             DispatchState::OnProcessing(_) => ClientStatus::Connected,
-            DispatchState::OnReconnect(ref error_message) => ClientStatus::Reconnecting(error_message.clone()),
-            DispatchState::OnSleep(_, ref error_message) => ClientStatus::Reconnecting(error_message.clone()),
+            DispatchState::OnReconnect(ref error_message) => ClientStatus::Disconnecting(error_message.clone()),
+            DispatchState::OnSleep(_, ref error_message) => ClientStatus::Disconnected(error_message.clone()),
         }
     }
 }
@@ -121,6 +123,7 @@ impl DispatchState {
 struct DispatchEngine {
     command_receiver: mpsc::UnboundedReceiver<(CommandPacket, CallbackSender)>,
     awaiting_callbacks: HashMap<RequestId, CallbackSender>,
+    notify_callbacks: Arc<RwLock<Vec<ReconnectNotifySender>>>,
 
     buffered_command: Option<TarantoolFramedRequest>,
     command_counter: RequestId,
@@ -131,15 +134,33 @@ struct DispatchEngine {
 }
 
 impl DispatchEngine {
-    fn new(command_receiver: mpsc::UnboundedReceiver<(CommandPacket, CallbackSender)>, timeout_time_ms: Option<u64>) -> DispatchEngine {
+    fn new(command_receiver: mpsc::UnboundedReceiver<(CommandPacket, CallbackSender)>,
+           timeout_time_ms: Option<u64>,
+           notify_callbacks: Arc<RwLock<Vec<ReconnectNotifySender>>>) -> DispatchEngine {
         DispatchEngine {
             command_receiver,
             buffered_command: None,
             awaiting_callbacks: HashMap::new(),
+            notify_callbacks,
             command_counter: 3,
             timeout_time_ms,
             timeout_queue: DelayQueue::new(),
             timeout_id_to_key: HashMap::new(),
+        }
+    }
+
+    fn send_notify(&mut self, status: &ClientStatus) {
+        let mut guard = self.notify_callbacks.write().unwrap();
+        let callbacks: &mut Vec<ReconnectNotifySender> = guard.as_mut();
+
+        //dirty code - send status to all callbacks and remove dead callbacks
+        let mut i = 0;
+        while i != callbacks.len() {
+            if let Ok(_) = &callbacks[i].unbounded_send(status.clone()) {
+                i = i + 1;
+            } else {
+                callbacks.remove(i);
+            }
         }
     }
 
@@ -267,19 +288,24 @@ pub struct Dispatch {
 
 impl Dispatch {
 
-    pub fn new(config: ClientConfig, command_receiver: mpsc::UnboundedReceiver<(CommandPacket, CallbackSender)>, status: Arc<RwLock<ClientStatus>>) -> Dispatch {
+    pub fn new(config: ClientConfig,
+               command_receiver: mpsc::UnboundedReceiver<(CommandPacket, CallbackSender)>,
+               status: Arc<RwLock<ClientStatus>>,
+               notify_callbacks: Arc<RwLock<Vec<ReconnectNotifySender>>>) -> Dispatch {
         let timeout_time_ms = config.timeout_time_ms.clone();
         Dispatch {
             state: DispatchState::New,
             config,
-            engine: DispatchEngine::new(command_receiver, timeout_time_ms),
+            engine: DispatchEngine::new(command_receiver, timeout_time_ms, notify_callbacks),
             status,
         }
     }
 
     fn update_status(&mut self) {
+        let status_tmp = self.state.get_client_status();
         let mut status = self.status.write().unwrap();
-        *status = self.state.get_client_status();
+        *status = status_tmp.clone();
+        self.engine.send_notify(&status_tmp);
     }
 
     fn get_auth_seq(stream: TcpStream, config: &ClientConfig) -> Box<Future<Item=TarantoolFramed, Error=io::Error> + Send> {

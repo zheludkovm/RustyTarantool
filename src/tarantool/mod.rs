@@ -4,6 +4,7 @@ use std::sync::{Arc, RwLock, Mutex};
 use futures::{Future, IntoFuture};
 use futures::sync::mpsc;
 use futures::sync::oneshot;
+use futures::stream::Stream;
 use serde::Serialize;
 use tokio;
 
@@ -36,6 +37,7 @@ pub struct Client {
     command_sender: mpsc::UnboundedSender<(CommandPacket, CallbackSender)>,
     dispatch: Arc<Mutex<Option<Dispatch>>>,
     status: Arc<RwLock<ClientStatus>>,
+    notify_callbacks: Arc<RwLock<Vec<dispatch::ReconnectNotifySender>>>
 }
 
 impl Client {
@@ -43,7 +45,8 @@ impl Client {
     pub fn new(config: ClientConfig) -> Client {
         let (command_sender, command_receiver) = mpsc::unbounded();
 
-        let status = Arc::new(RwLock::new(ClientStatus::New));
+        let status = Arc::new(RwLock::new(ClientStatus::Init));
+        let notify_callbacks = Arc::new(RwLock::new(Vec::new()));
 
         Client {
             command_sender,
@@ -51,14 +54,23 @@ impl Client {
                 config,
                 command_receiver,
                 status.clone(),
+                notify_callbacks.clone()
             )))),
             status,
+            notify_callbacks,
         }
     }
 
     /// return client status
     pub fn get_status(&self) -> ClientStatus {
         self.status.read().unwrap().clone()
+    }
+
+    /// return notify stream with connection statuses
+    pub fn subscribe_to_notify_stream(&self) -> impl Stream<Item=ClientStatus, Error=()> {
+        let (callback_sender, callback_receiver) = mpsc::unbounded();
+        self.notify_callbacks.write().unwrap().push(callback_sender);
+        callback_receiver
     }
 
     /// send any command you manually create, this method is low level and not intended to be used

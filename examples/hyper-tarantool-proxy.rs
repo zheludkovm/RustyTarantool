@@ -7,14 +7,19 @@ extern crate serde_json;
 extern crate url;
 
 use std::collections::HashMap;
+use std::iter::Iterator;
+use std::sync::Once;
 
 use futures::future;
+use futures::stream::Stream;
 use hyper::{Body, Method, Request, Response, Server, StatusCode};
 use hyper::header;
 use hyper::rt::Future;
 use hyper::service::service_fn;
 
 use rusty_tarantool::tarantool;
+
+static INIT_STATUS_CHANGE: Once = Once::new();
 
 type BoxFut = Box<Future<Item=Response<Body>, Error=hyper::Error> + Send>;
 
@@ -90,16 +95,27 @@ fn http_handler(req: Request<Body>, tarantool: &tarantool::Client) -> BoxFut {
 fn main() {
     let addr = ([127, 0, 0, 1], 3078).into();
 
-    let service = || {
-        println!("init tarantool");
-        let tarantool = tarantool::ClientConfig::new(
-            "127.0.0.1:3301".parse().unwrap(),
-            "rust",
-            "rust",
-        ).build();
+    let tarantool = tarantool::ClientConfig::new(
+        "127.0.0.1:3301".parse().unwrap(),
+        "rust",
+        "rust",
+    ).build();
+
+    let service = move || {
+        let tarantool_ref = (&tarantool).clone();
+
+        //init status tracker only once
+        INIT_STATUS_CHANGE.call_once(|| {
+            hyper::rt::spawn(
+                tarantool_ref.subscribe_to_notify_stream().for_each(|status| {
+                    println!("status change to = {:?}", status);
+                    Ok(())
+                })
+            );
+        });
 
         service_fn(move |body| {
-            http_handler(body, &tarantool)
+            http_handler(body, &tarantool_ref)
         })
     };
 
