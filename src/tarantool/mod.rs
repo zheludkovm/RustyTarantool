@@ -11,6 +11,7 @@ use tokio;
 use tarantool::dispatch::{CallbackSender, Dispatch, ERROR_CLIENT_DISCONNECTED, ERROR_DISPATCH_THREAD_IS_DEAD};
 pub use tarantool::dispatch::{ClientConfig, ClientStatus};
 pub use tarantool::packets::{CommandPacket, TarantoolRequest, TarantoolResponse};
+pub use tarantool::tools::serialize_to_vec_u8;
 
 pub mod packets;
 pub mod codec;
@@ -218,6 +219,21 @@ impl Client {
     ///
     pub fn replace<T>(&self, space: i32, tuple: &T) -> impl Future<Item=TarantoolResponse, Error=io::Error> where T: Serialize {
         self.send_command(CommandPacket::replace(space, tuple).unwrap())
+    }
+
+    #[inline(always)]
+    ///replace tuple in space by primary key - raw method if you have already serialized msgpack
+    /// - space - space id
+    /// - tuple - sequence of fields stored as msgpack
+    ///
+    /// # Examples
+    /// ```text
+    /// let tuple_replace= (3,"test_insert","replace");
+    /// let raw_buf = serialize_to_vec_u8(&tuple_replace).unwrap();
+    /// client.replace_raw(SPACE_ID, raw_buf)
+    ///
+    pub fn replace_raw(&self, space: i32, tuple_raw: Vec<u8>) -> impl Future<Item=TarantoolResponse, Error=io::Error>  {
+        self.send_command(CommandPacket::replace_raw(space, tuple_raw).unwrap())
     }
 
     ///update row in tarantool

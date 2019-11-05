@@ -11,7 +11,7 @@ extern crate tokio_codec;
 
 
 use futures::{Future};
-use rusty_tarantool::tarantool::{Client, ClientConfig};
+use rusty_tarantool::tarantool::{Client, ClientConfig, serialize_to_vec_u8};
 use std::io;
 use std::sync::{Once, ONCE_INIT};
 use tokio::runtime::current_thread::Runtime;
@@ -86,6 +86,7 @@ fn test_delete_insert_update() {
     let client = init_client();
     let tuple= (3,"test_insert");
     let tuple_replace= (3,"test_insert","replace");
+    let tuple_replace_raw= (3,"test_insert","replace","replace_raw");
     let update_op= (('=',2,"test_update"),);
 
 
@@ -113,10 +114,14 @@ fn test_delete_insert_update() {
             .and_then(|_| {
                 client.replace(SPACE_ID, &tuple_replace)
             })
+            .and_then(|_| {
+                let raw_buf = serialize_to_vec_u8(&tuple_replace_raw).unwrap();
+                client.replace_raw(SPACE_ID, raw_buf)
+            })
             .and_then(move |response| {
-                let s: Vec<(u32, String,String)> = response.decode()?;
+                let s: Vec<(u32, String,String,String)> = response.decode()?;
                 println!("resp value={:?}", s);
-                assert_eq!(vec![(3, "test_insert".to_string(), "replace".to_string())], s);
+                assert_eq!(vec![(3, "test_insert".to_string(), "replace".to_string(), "replace_raw".to_string())], s);
                 Ok(())
             })
 

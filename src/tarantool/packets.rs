@@ -40,8 +40,8 @@ pub enum TarantoolRequest {
 ///
 #[derive(Debug)]
 pub struct TarantoolResponse {
-     code: u64,
-     data: Bytes,
+     pub code: u64,
+     pub data: Bytes,
 }
 
 #[derive(Debug,Clone)]
@@ -170,6 +170,17 @@ impl CommandPacket {
                 code: Code::REPLACE,
                 internal_fields: vec![(Key::SPACE,Value::from(space))],
                 command_field: vec![(Key::TUPLE, tools::serialize_to_vec_u8(tuple)? )]
+            }
+        )
+    }
+
+    pub fn replace_raw(space:i32, tuple_raw: Vec<u8>) -> io::Result<CommandPacket>
+    {
+        Ok(
+            CommandPacket {
+                code: Code::REPLACE,
+                internal_fields: vec![(Key::SPACE,Value::from(space))],
+                command_field: vec![(Key::TUPLE, tuple_raw )]
             }
         )
     }
