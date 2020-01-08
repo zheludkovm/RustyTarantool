@@ -54,7 +54,7 @@ box.cfg {
 
     -- How much memory Memtx engine allocates
     -- to actually store tuples, in bytes.
-    memtx_memory = 4 * 1024 * 1024 * 1024;
+    memtx_memory = 128 * 1024 * 1024;
 
     -- Size of the smallest allocation unit, in bytes.
     -- It can be tuned up if most of the tuples are not so small
@@ -74,10 +74,10 @@ box.cfg {
     -- vinyl_dir = nil;
 
     -- How much memory Vinyl engine can use for in-memory level, in bytes.
-    vinyl_memory = 10 * 1024 * 1024 * 1024; -- 10 gb
+    vinyl_memory = 128 * 1024 * 1024; -- 128 mb
 
     -- How much memory Vinyl engine can use for caches, in bytes.
-    vinyl_cache = 1024 * 1024 * 1024; -- 1 gb
+    vinyl_cache = 64 * 1024 * 1024; -- 64 mb
 
     -- The maximum number of background workers for compaction.
     vinyl_write_threads = 2;
