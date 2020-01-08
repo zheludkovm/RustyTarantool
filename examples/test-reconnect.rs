@@ -4,7 +4,6 @@ use std::net::SocketAddr;
 use std::time::{Duration, Instant};
 use tokio::timer::Interval;
 
-
 fn main() {
     env_logger::init();
 
@@ -18,25 +17,21 @@ fn main() {
     let command = CommandPacket::replace(space_id, &tuple_replace).unwrap();
 
     //we create client without variable - if we don't, awaiting task wil be forever
-    let print_task = rusty_tarantool::tarantool::ClientConfig::new(
-        addr,
-        "rust",
-        "rust",
-    ).set_reconnect_time_ms(2000).build()
+    let print_task = rusty_tarantool::tarantool::ClientConfig::new(addr, "rust", "rust")
+        .set_reconnect_time_ms(2000)
+        .build()
         .send_command(command)
         .map(|resp| println!("response! {:?}", resp))
-        .map_err(|e| println!("error! {:?}", e))
-    ;
+        .map_err(|e| println!("error! {:?}", e));
     println!("spawn single task!");
     tokio::run(print_task);
     println!("finish single task!");
 
-    let tarantool = rusty_tarantool::tarantool::ClientConfig::new(
-        addr,
-        "rust",
-        "rust",
-    ).set_reconnect_time_ms(2000).set_timeout_time_ms(1000).build();
-    
+    let tarantool = rusty_tarantool::tarantool::ClientConfig::new(addr, "rust", "rust")
+        .set_reconnect_time_ms(2000)
+        .set_timeout_time_ms(1000)
+        .build();
+
     let task = Interval::new(Instant::now(), Duration::from_millis(1000))
         .for_each(move |instant| {
             println!("fire; instant={:?}", instant);

@@ -1,7 +1,7 @@
 //! Tarantool async tokio based client.
 //!
 //! main features : auth by login and password, auto reconnect, optional timeout
-//! 
+//!
 //! supported tarantool api :
 //! - call function
 //! - select
@@ -38,4 +38,3 @@ extern crate log;
 extern crate env_logger;
 
 pub mod tarantool;
-
