@@ -1,9 +1,3 @@
-extern crate env_logger;
-extern crate futures;
-extern crate log;
-extern crate rusty_tarantool;
-extern crate tokio;
-
 use futures::{Future, Stream};
 use rusty_tarantool::tarantool::packets::CommandPacket;
 use std::net::SocketAddr;

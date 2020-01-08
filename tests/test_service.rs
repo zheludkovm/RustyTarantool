@@ -13,10 +13,10 @@ extern crate tokio_codec;
 use futures::{Future};
 use rusty_tarantool::tarantool::{Client, ClientConfig, serialize_to_vec_u8};
 use std::io;
-use std::sync::{Once, ONCE_INIT};
+use std::sync::{Once};
 use tokio::runtime::current_thread::Runtime;
 
-static INIT: Once = ONCE_INIT;
+static INIT: Once = Once::new();
 
 static SPACE_ID: i32 = 1000;
 

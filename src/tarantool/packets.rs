@@ -4,7 +4,7 @@ use std::str;
 
 use rmpv::{Value};
 use serde::{Serialize, Deserialize};
-use tarantool::tools;
+use crate::tarantool::tools;
 
 use bytes::{Bytes ,IntoBuf};
 

@@ -1,14 +1,3 @@
-extern crate env_logger;
-extern crate futures;
-extern crate log;
-extern crate rusty_tarantool;
-extern crate tokio;
-
-extern crate rmpv;
-extern crate rmp_serde;
-extern crate serde;
-extern crate rmp;
-
 use tokio::runtime::current_thread::Runtime;
 use rusty_tarantool::tarantool::{ClientConfig};
 use futures::{Future};

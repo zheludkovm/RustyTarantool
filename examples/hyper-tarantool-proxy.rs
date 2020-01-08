@@ -1,6 +1,3 @@
-extern crate futures;
-extern crate hyper;
-extern crate rusty_tarantool;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
@@ -21,7 +18,7 @@ use rusty_tarantool::tarantool;
 
 static INIT_STATUS_CHANGE: Once = Once::new();
 
-type BoxFut = Box<Future<Item=Response<Body>, Error=hyper::Error> + Send>;
+type BoxFut = Box<dyn Future<Item=Response<Body>, Error=hyper::Error> + Send>;
 
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct CountryInfo {

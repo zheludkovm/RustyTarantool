@@ -31,7 +31,7 @@ pub fn serialize_to_vec_u8<S: Serialize>(v: &S) -> io::Result<Vec<u8>> {
 
 
 pub fn map_err_to_io<E>(e: E) -> io::Error
-    where E: Into<Box<error::Error + Send + Sync>>
+    where E: Into<Box<dyn error::Error + Send + Sync>>
 {
     error!("Error! {:?}",e.into());
     io::Error::new(io::ErrorKind::Other, "")

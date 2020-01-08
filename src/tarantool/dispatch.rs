@@ -17,8 +17,8 @@ use tokio::timer::{Delay, DelayQueue};
 use tokio::timer::delay_queue;
 use tokio_codec::{Decoder, Framed};
 
-use tarantool::codec::{RequestId, TarantoolCodec, TarantoolFramedRequest};
-use tarantool::packets::{AuthPacket, CommandPacket, TarantoolRequest, TarantoolResponse};
+use crate::tarantool::codec::{RequestId, TarantoolCodec, TarantoolFramedRequest};
+use crate::tarantool::packets::{AuthPacket, CommandPacket, TarantoolRequest, TarantoolResponse};
 
 pub type TarantoolFramed = Framed<TcpStream, TarantoolCodec>;
 pub type CallbackSender = oneshot::Sender<io::Result<TarantoolResponse>>;
@@ -86,7 +86,7 @@ pub enum ClientStatus {
 enum DispatchState {
     New,
     OnConnect(ConnectFuture),
-    OnHandshake(Box<Future<Item=TarantoolFramed, Error=io::Error> + Send>),
+    OnHandshake(Box<dyn Future<Item=TarantoolFramed, Error=io::Error> + Send>),
     OnProcessing((SplitSink<TarantoolFramed>, SplitStream<TarantoolFramed>)),
 
     OnReconnect(String),
@@ -308,7 +308,7 @@ impl Dispatch {
         self.engine.send_notify(&status_tmp);
     }
 
-    fn get_auth_seq(stream: TcpStream, config: &ClientConfig) -> Box<Future<Item=TarantoolFramed, Error=io::Error> + Send> {
+    fn get_auth_seq(stream: TcpStream, config: &ClientConfig) -> Box<dyn Future<Item=TarantoolFramed, Error=io::Error> + Send> {
         let login = config.login.clone();
         let password = config.password.clone();
 

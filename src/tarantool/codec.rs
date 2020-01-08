@@ -3,8 +3,8 @@ use rmp::encode;
 use rmpv::{self, decode, Value};
 use std::io;
 use std::str;
-use tarantool::packets::{Code, Key, TarantoolRequest, TarantoolResponse};
-use tarantool::tools::{decode_serde, get_map_value, make_auth_digest, map_err_to_io, SafeBytesMutWriter, search_key_in_msgpack_map, serialize_to_buf_mut, write_u32_to_slice};
+use crate::tarantool::packets::{Code, Key, TarantoolRequest, TarantoolResponse};
+use crate::tarantool::tools::{decode_serde, get_map_value, make_auth_digest, map_err_to_io, SafeBytesMutWriter, search_key_in_msgpack_map, serialize_to_buf_mut, write_u32_to_slice};
 use tokio_codec::{Decoder, Encoder};
 
 pub type RequestId = u64;
@@ -74,7 +74,7 @@ fn parse_response(buf: &mut BytesMut, size: usize) -> io::Result<(RequestId, io:
             Ok((sync, Ok(TarantoolResponse::new(code, search_key_in_msgpack_map(r, Key::DATA as u64)?))))
         }
         _ => {
-            let mut response_data = TarantoolResponse::new(code, search_key_in_msgpack_map(r, Key::ERROR as u64)?);
+            let response_data = TarantoolResponse::new(code, search_key_in_msgpack_map(r, Key::ERROR as u64)?);
             let s: String = response_data.decode()?;
             error!("Tarantool ERROR >> {:?}", s);
             Ok((sync, Err(io::Error::new(io::ErrorKind::Other, s))))
