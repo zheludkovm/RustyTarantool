@@ -1,14 +1,14 @@
-#[macro_use]
+//extern crate rusty_tarantool;
 extern crate serde_derive;
 extern crate serde_json;
-extern crate url;
 
-use actix_web::{web, App, Error, HttpRequest, HttpResponse, HttpServer};
-use futures::future;
-use futures::future::Future;
+use serde_derive::{Deserialize, Serialize};
 
-use rusty_tarantool::tarantool;
-use rusty_tarantool::tarantool::Client;
+use actix_web::{get, web, App, HttpResponse, HttpServer};
+use futures::{select, FutureExt};
+use futures::stream::{StreamExt};
+use rusty_tarantool::tarantool::{Client, ClientConfig};
+use std::io;
 
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct CountryInfo {
@@ -32,43 +32,42 @@ struct CountryRequest {
     sub_region: Option<String>,
 }
 
-fn handler(
-    req: HttpRequest,
+#[get("/countries/query")]
+async fn index(
     params: web::Query<CountryRequest>,
-) -> Box<dyn Future<Item = HttpResponse, Error = Error>> {
-    let tarantool = req.app_data::<Client>().unwrap();
-    println!("call tarantool! {:?}", params);
-    let response = tarantool
+    tarantool_client: web::Data<Client>,
+) -> io::Result<HttpResponse> {
+    let response = tarantool_client
         .call_fn3(
             "test_search",
             &params.country_name,
             &params.region,
             &params.sub_region,
         )
-        .and_then(move |response| {
-            Ok(CountryResponse {
-                countries: response.decode_single()?,
-            })
-        })
-        .map(|result| HttpResponse::Ok().json(result))
-        .or_else(move |err| {
-            let body = format!("Internal error: {}", err.to_string());
-            future::ok::<_, Error>(HttpResponse::InternalServerError().body(body))
-        });
-    Box::new(response)
+        .await?;
+    Ok(HttpResponse::Ok().json(CountryResponse {
+        countries: response.decode_single()?,
+    }))
 }
 
-fn main() {
-    HttpServer::new(|| {
-        let tarantool =
-            tarantool::ClientConfig::new("127.0.0.1:3301".parse().unwrap(), "rust", "rust").build();
+#[actix_rt::main]
+async fn main() -> std::io::Result<()> {
+    let tarantool_client = ClientConfig::new("127.0.0.1:3301", "rust", "rust")
+        .set_timeout_time_ms(2000)
+        .set_reconnect_time_ms(2000)
+        .build();
 
-        App::new()
-            .data(tarantool)
-            .route("/countries/query", web::to_async(handler))
-    })
-    .bind("127.0.0.1:8088")
-    .unwrap()
-    .run()
-    .unwrap();
+    let mut notify_future = Box::pin(tarantool_client
+        .subscribe_to_notify_stream()
+        .for_each_concurrent(0, |s| async move { println!("current status {:?}", s) }));
+
+    let mut server_future = HttpServer::new(move || App::new().data(tarantool_client.clone()).service(index))
+        .bind("127.0.0.1:8080")?
+        .run().fuse();
+
+    select! {
+        _r = notify_future => println!("Status notify stream is finished!"),
+        _r = server_future => println!("Server is stopped!"),
+    };
+    Ok(())
 }

@@ -6,7 +6,7 @@ license = "Apache-2.0"
 repository = "https://github.com/zheludkovm/RustyTarantool"
 categories = ["asynchronous", "network-programming"]
 keywords = ["asynchronous", "tarantool", "protocol" , "api"]
-version = "0.1.4"
+version = "0.2.0"
 exclude = [
     "test-tarantool/*"
 ]
@@ -19,14 +19,18 @@ path = "src/lib.rs"
 
 [dependencies]
 maplit = "1.0"
-futures = "0.1"
-bytes = "0.4"
+futures-core = "0.3.1"
+futures-sink = "0.3.1"
+futures-channel = "0.3.1"
+futures-util = "0.3.1"
+futures = "0.3.1"
+bytes = "0.5"
 log = "0.4"
 env_logger = "0.5"
 byteorder = "1.1"
 
-tokio = "0.1"
-tokio-codec = "0.1"
+tokio = { version = "0.2", features = ["full"] }
+tokio-util = {version = "0.2.0", features= ["codec"]}
 
 serde = "1.0"
 serde_derive = "1.0"
@@ -39,7 +43,8 @@ sha1 = "0.2"
 rustc-serialize = "0.3"
 
 [dev-dependencies]
-hyper = "0.12"
+actix-web = "2"
+actix-rt = "1"
 serde_json = "1.0"
-url = "1.7"
-actix-web = "1.0"
+hyper = "0.13"
+url = "1"

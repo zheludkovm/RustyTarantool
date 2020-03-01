@@ -1,24 +1,12 @@
-#[macro_use]
-extern crate serde_derive;
-extern crate serde_json;
-extern crate url;
+use rusty_tarantool::tarantool::{Client, ClientConfig};
+use serde_derive::{Deserialize, Serialize};
+use std::convert::Infallible;
 
+use hyper::service::{make_service_fn, service_fn};
+use hyper::{header, Body, Method, Request, Response, Server, StatusCode};
 use std::collections::HashMap;
-use std::iter::Iterator;
-use std::sync::Once;
-
-use futures::future;
-use futures::stream::Stream;
-use hyper::header;
-use hyper::rt::Future;
-use hyper::service::service_fn;
-use hyper::{Body, Method, Request, Response, Server, StatusCode};
-
-use rusty_tarantool::tarantool;
-
-static INIT_STATUS_CHANGE: Once = Once::new();
-
-type BoxFut = Box<dyn Future<Item = Response<Body>, Error = hyper::Error> + Send>;
+use std::io;
+use url;
 
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct CountryInfo {
@@ -41,7 +29,7 @@ fn parse_query(query: &str) -> HashMap<String, String> {
         .collect::<HashMap<String, String>>()
 }
 
-fn http_handler(req: Request<Body>, tarantool: &tarantool::Client) -> BoxFut {
+async fn hello(req: Request<Body>, tarantool_client: Client) -> io::Result<Response<Body>> {
     match (req.method(), req.uri().path()) {
         (&Method::GET, "/countries/query") => {
             let (country_name, region, sub_region) = match req.uri().query() {
@@ -55,34 +43,20 @@ fn http_handler(req: Request<Body>, tarantool: &tarantool::Client) -> BoxFut {
                 }
                 None => (None, None, None),
             };
-
-            let tarantool_c = tarantool.clone();
-            let response = tarantool
+            let response = tarantool_client
                 .call_fn3("test_search", &country_name, &region, &sub_region)
-                .and_then(move |response| {
-                    Ok(CountryResponse {
-                        countries: response.decode_single()?,
-                    })
-                })
-                .map(|result| {
-                    let body = serde_json::to_string(&result).unwrap();
-                    Response::builder()
-                        .header(header::CONTENT_TYPE, "application/json")
-                        .status(StatusCode::OK)
-                        .body(body.into())
-                        .unwrap()
-                })
-                .or_else(move |err| {
-                    println!("status = {:?}", tarantool_c.get_status());
+                .await?;
+            let country_response = CountryResponse {
+                countries: response.decode_single()?,
+            };
+            let body = serde_json::to_string(&country_response).unwrap();
+            let resp = Response::builder()
+                .header(header::CONTENT_TYPE, "application/json")
+                .status(StatusCode::OK)
+                .body(body.into())
+                .unwrap();
 
-                    future::ok(
-                        Response::builder()
-                            .header(header::CONTENT_TYPE, "text/plain")
-                            .body(format!("Internal error: {}", err.to_string()).into())
-                            .unwrap(),
-                    )
-                });
-            Box::new(response)
+            Ok(resp)
         }
         _ => {
             let resp = Response::builder()
@@ -90,39 +64,28 @@ fn http_handler(req: Request<Body>, tarantool: &tarantool::Client) -> BoxFut {
                 .status(StatusCode::NOT_FOUND)
                 .body("Url not found!".into())
                 .unwrap();
-            Box::new(future::ok(resp))
+            Ok(resp)
         }
     }
 }
 
-fn main() {
-    let addr = ([127, 0, 0, 1], 3078).into();
+#[tokio::main]
+pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    env_logger::init();
+    let tarantool_client = ClientConfig::new("127.0.0.1:3301", "rust", "rust")
+        .set_timeout_time_ms(2000)
+        .set_reconnect_time_ms(2000)
+        .build();
 
-    let tarantool =
-        tarantool::ClientConfig::new("127.0.0.1:3301".parse().unwrap(), "rust", "rust").build();
+    let make_svc = make_service_fn(|_conn| {
+        let tarantool_clone = tarantool_client.clone();
 
-    let service = move || {
-        let tarantool_ref = (&tarantool).clone();
+        async { Ok::<_, Infallible>(service_fn(move |req| hello(req, tarantool_clone.clone()))) }
+    });
 
-        //init status tracker only once
-        INIT_STATUS_CHANGE.call_once(|| {
-            hyper::rt::spawn(
-                tarantool_ref
-                    .subscribe_to_notify_stream()
-                    .for_each(|status| {
-                        println!("status change to = {:?}", status);
-                        Ok(())
-                    }),
-            );
-        });
-
-        service_fn(move |body| http_handler(body, &tarantool_ref))
-    };
-
-    let server = Server::bind(&addr)
-        .serve(service)
-        .map_err(|e| eprintln!("server error: {}", e));
-
+    let addr = ([127, 0, 0, 1], 8080).into();
+    let server = Server::bind(&addr).serve(make_svc);
     println!("Listening on http://{}", addr);
-    hyper::rt::run(server);
+    server.await?;
+    Ok(())
 }

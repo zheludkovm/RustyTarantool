@@ -3,12 +3,13 @@ use crate::tarantool::tools::{
     decode_serde, get_map_value, make_auth_digest, map_err_to_io, search_key_in_msgpack_map,
     serialize_to_buf_mut, write_u32_to_slice, SafeBytesMutWriter,
 };
-use bytes::{BufMut, Bytes, BytesMut, IntoBuf};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 use rmp::encode;
 use rmpv::{self, decode, Value};
 use std::io;
+use std::io::Cursor;
 use std::str;
-use tokio_codec::{Decoder, Encoder};
+use tokio_util::codec::{Decoder, Encoder};
 
 pub type RequestId = u64;
 pub type TarantoolFramedRequest = (RequestId, TarantoolRequest);
@@ -70,9 +71,10 @@ fn parse_response(
     buf: &mut BytesMut,
     size: usize,
 ) -> io::Result<(RequestId, io::Result<TarantoolResponse>)> {
-    buf.split_to(5);
+    //    buf.split_to(5);
+    buf.advance(5);
     let response_body = buf.split_to(size);
-    let mut r = response_body.into_buf();
+    let mut r = Cursor::new(response_body);
 
     let headers = decode::read_value(&mut r).map_err(map_err_to_io)?;
     let (code, sync) = parse_headers(headers)?;
@@ -167,7 +169,8 @@ fn decode_greetings(
         GREETINGS_HEADER => Ok(Some((0, Ok(TarantoolResponse::new(0, Bytes::new()))))),
         _ => Err(io::Error::new(io::ErrorKind::Other, "Unknown header!")),
     };
-    buf.split_to(64 - GREETINGS_HEADER_LENGTH);
+    //    buf.split_to(64 - GREETINGS_HEADER_LENGTH);
+    buf.advance(64 - GREETINGS_HEADER_LENGTH);
     let salt_buf = buf.split_to(64);
     codec.salt = Some(salt_buf.to_vec());
 

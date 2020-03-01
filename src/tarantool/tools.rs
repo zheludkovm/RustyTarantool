@@ -53,7 +53,8 @@ pub fn search_key_in_msgpack_map(mut r: Cursor<BytesMut>, search_key: u64) -> io
                 Value::Integer(k) if k.is_u64() && k.as_u64().unwrap() == search_key => {
                     let pos = r.position();
                     let mut res_buf = r.into_inner();
-                    res_buf.split_to(pos as usize);
+                    //                    res_buf.split_to(pos as usize);
+                    res_buf.advance(pos as usize);
                     return Ok(res_buf.freeze());
                 }
                 _ => {}

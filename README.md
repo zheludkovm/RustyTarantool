@@ -41,21 +41,14 @@ Rust client :
 ```rust
 
 println!("Connect to tarantool and call simple stored procedure!");
-let mut rt = Runtime::new().unwrap();
+let client = ClientConfig::new("127.0.0.1:3301", "rust", "rust")
+                     .set_timeout_time_ms(2000)
+                     .set_reconnect_time_ms(2000)
+                     .build();
 
-let addr = "127.0.0.1:3301".parse().unwrap();
-let client = ClientConfig::new(addr, "rust", "rust").build();
-
-let response_future = client.call_fn2("test", &("param11", "param12") , &2)
-    .and_then(|response| {
-        let res : ((String,String), (u64,), (Option<u64>,)) = response.decode_trio()?;
-        Ok(res)
-    }) ;
-
-match rt.block_on(response_future) {
-    Err(e) => println!("err={:?}", e),
-    Ok(res) => println!("stored procedure response ={:?}", res)
-}
+let response = client.call_fn2("test", &("param11", "param12") , &2).await?;
+let res : ((String,String), (u64,), (Option<u64>,)) = response.decode_trio()?;
+println!("stored procedure response ={:?}", res);
 
 ```
 
@@ -66,6 +59,8 @@ Connect to tarantool and call simple stored procedure!
 stored procedure response =(("param11", "param12"), (2,), (Some(11),))
 ```
 
-On examples part of project you can also see more complicated example :
+On examples part of project you can also see more complicated examples :
 
-http server connecting to tarantool
+hyper http server connecting to tarantool
+actix-web example
+simple benchmark
