@@ -62,5 +62,7 @@ stored procedure response =(("param11", "param12"), (2,), (Some(11),))
 On examples part of project you can also see more complicated examples :
 
 hyper http server connecting to tarantool
+
 actix-web example
+
 simple benchmark
