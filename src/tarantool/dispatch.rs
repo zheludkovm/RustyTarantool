@@ -287,7 +287,7 @@ impl Dispatch {
     }
 
     async fn connect_and_process_commands(&mut self) -> io::Result<()> {
-        let tcp_stream = TcpStream::connect("127.0.0.1:3301").await?;
+        let tcp_stream = TcpStream::connect(self.config.addr.clone()).await?;
         let mut framed_io = self.auth(tcp_stream).await?;
         self.set_status(ClientStatus::Connected).await;
         loop {
