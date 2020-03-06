@@ -6,7 +6,7 @@ license = "Apache-2.0"
 repository = "https://github.com/zheludkovm/RustyTarantool"
 categories = ["asynchronous", "network-programming"]
 keywords = ["asynchronous", "tarantool", "protocol" , "api"]
-version = "0.2.1"
+version = "0.2.2"
 exclude = [
     "test-tarantool/*"
 ]

@@ -23,6 +23,22 @@ impl ClientConfig {
     }
 }
 
+///iterator types
+pub enum IteratorType {
+    EQ = 0 , // key == x ASC order
+    REQ = 1, // key == x DESC order
+    ALL = 2, // all tuples
+    LT = 3, // key <  x
+    LE = 4, // key <= x
+    GE = 5, // key >= x
+    GT = 6, // key >  x
+    BitsAllSet = 7, // all bits from x are set in key
+    BitsAnySet = 8, // at least one x's bit is set
+    BitsAllNotSet = 9, // all bits are not set
+    OVERLAPS = 10, // key overlaps x
+    NEIGHBOR = 11,
+}
+
 ///
 /// API to tarantool.
 ///
@@ -253,13 +269,13 @@ impl Client {
         key: &T,
         offset: i32,
         limit: i32,
-        iterator: i32,
+        iterator: IteratorType,
     ) -> io::Result<TarantoolResponse>
     where
         T: Serialize,
     {
         self.send_command(
-            CommandPacket::select(space, index, key, offset, limit, iterator).unwrap(),
+            CommandPacket::select(space, index, key, offset, limit, iterator as i32).unwrap(),
         )
         .await
     }

@@ -10,7 +10,7 @@ extern crate rmpv;
 extern crate serde;
 
 use rusty_tarantool::tarantool::packets::CommandPacket;
-use rusty_tarantool::tarantool::{serialize_to_vec_u8, Client, ClientConfig};
+use rusty_tarantool::tarantool::{serialize_to_vec_u8, Client, ClientConfig, IteratorType};
 
 use std::io;
 use std::sync::Once;
@@ -60,7 +60,7 @@ async fn test_call_fn() -> io::Result<()> {
 async fn test_select() -> io::Result<()> {
     let client = init_client();
     let key = (1,);
-    let response = client.select(SPACE_ID, 0, &key, 0, 100, 0).await?;
+    let response = client.select(SPACE_ID, 0, &key, 0, 100, IteratorType::EQ).await?;
     println!("response2: {:?}", response);
     let s: Vec<(u32, String)> = response.decode()?;
     println!("resp value={:?}", s);

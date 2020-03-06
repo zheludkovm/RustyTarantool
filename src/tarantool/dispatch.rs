@@ -83,7 +83,9 @@ pub enum ClientStatus {
     Disconnected(String),
 }
 
-struct DispatchEngine {
+pub struct Dispatch {
+    config: ClientConfig,
+    // engine: DispatchEngine,
     command_receiver: mpsc::UnboundedReceiver<(CommandPacket, CallbackSender)>,
     awaiting_callbacks: HashMap<RequestId, CallbackSender>,
     notify_callbacks: Arc<Mutex<Vec<ReconnectNotifySender>>>,
@@ -94,15 +96,20 @@ struct DispatchEngine {
     timeout_time_ms: Option<u64>,
     timeout_queue: DelayQueue<RequestId>,
     timeout_id_to_key: HashMap<RequestId, delay_queue::Key>,
+
+    status: Arc<RwLock<ClientStatus>>,
 }
 
-impl DispatchEngine {
-    fn new(
+impl Dispatch {
+    pub fn new(
+        config: ClientConfig,
         command_receiver: mpsc::UnboundedReceiver<(CommandPacket, CallbackSender)>,
-        timeout_time_ms: Option<u64>,
+        status: Arc<RwLock<ClientStatus>>,
         notify_callbacks: Arc<Mutex<Vec<ReconnectNotifySender>>>,
-    ) -> DispatchEngine {
-        DispatchEngine {
+    ) -> Dispatch {
+        let timeout_time_ms = config.timeout_time_ms.clone();
+        Dispatch {
+            config,
             command_receiver,
             buffered_command: None,
             awaiting_callbacks: HashMap::new(),
@@ -111,9 +118,11 @@ impl DispatchEngine {
             timeout_time_ms,
             timeout_queue: DelayQueue::new(),
             timeout_id_to_key: HashMap::new(),
+            status,
         }
     }
 
+    ///send status notification to all subscribers
     async fn send_notify(&mut self, status: &ClientStatus) {
         let callbacks: Vec<ReconnectNotifySender> =
             self.notify_callbacks.lock().unwrap().split_off(0);
@@ -130,6 +139,7 @@ impl DispatchEngine {
             .extend(filtered_callbacks.iter().cloned());
     }
 
+    ///send command from buffer. if not success, return command to buffer and initiate reconnect
     async fn try_send_buffered_command(&mut self, sink: &mut TarantoolFramed) -> io::Result<()> {
         if let Some(command) = self.buffered_command.take() {
             if let Err(e) = Pin::new(sink).send(command.clone()).await {
@@ -144,6 +154,7 @@ impl DispatchEngine {
         Ok(())
     }
 
+    ///send error to all awaiting callbacks
     fn send_error_to_all(&mut self, error_description: &String) {
         for (_, callback_sender) in self.awaiting_callbacks.drain() {
             let _res = callback_sender.send(Err(io::Error::new(
@@ -171,6 +182,7 @@ impl DispatchEngine {
         }
     }
 
+    ///process command - send to tarantool, store callback
     async fn process_command(
         &mut self,
         command: Option<(CommandPacket, CallbackSender)>,
@@ -204,6 +216,7 @@ impl DispatchEngine {
         }
     }
 
+    ///process tarantool response
     async fn process_tarantool_response(
         &mut self,
         response: Option<io::Result<(RequestId, io::Result<TarantoolResponse>)>>,
@@ -238,36 +251,13 @@ impl DispatchEngine {
     fn clean_command_counter(&mut self) {
         self.command_counter = 3;
     }
-}
-
-pub struct Dispatch {
-    config: ClientConfig,
-    //    state: DispatchState,
-    engine: DispatchEngine,
-    status: Arc<RwLock<ClientStatus>>,
-}
-
-impl Dispatch {
-    pub fn new(
-        config: ClientConfig,
-        command_receiver: mpsc::UnboundedReceiver<(CommandPacket, CallbackSender)>,
-        status: Arc<RwLock<ClientStatus>>,
-        notify_callbacks: Arc<Mutex<Vec<ReconnectNotifySender>>>,
-    ) -> Dispatch {
-        let timeout_time_ms = config.timeout_time_ms.clone();
-        Dispatch {
-            //            state: DispatchState::New,
-            config,
-            engine: DispatchEngine::new(command_receiver, timeout_time_ms, notify_callbacks),
-            status,
-        }
-    }
 
     async fn set_status(&mut self, client_status: ClientStatus) {
-        self.engine.send_notify(&client_status).await;
+        self.send_notify(&client_status).await;
         *(self.status.write().unwrap()) = client_status;
     }
 
+    ///main dispatch look function
     pub async fn run(&mut self) {
         self.set_status(ClientStatus::Connecting).await;
         loop {
@@ -279,7 +269,7 @@ impl Dispatch {
                 Err(e) => {
                     self.set_status(ClientStatus::Disconnected(e.to_string()))
                         .await;
-                    self.engine.send_error_to_all(&e.to_string());
+                    self.send_error_to_all(&e.to_string());
                     delay_for(Duration::from_millis(self.config.reconnect_time_ms)).await;
                 }
             }
@@ -293,10 +283,10 @@ impl Dispatch {
         loop {
             select! {
                 tarantool_response = framed_io.next().fuse() => {
-                    self.engine.process_tarantool_response(tarantool_response).await?
+                    self.process_tarantool_response(tarantool_response).await?
                 }
-                command = self.engine.command_receiver.next() => {
-                    self.engine.process_command(command, &mut framed_io).await?
+                command = self.command_receiver.next() => {
+                    self.process_command(command, &mut framed_io).await?
                 }
             }
         }
@@ -322,7 +312,7 @@ impl Dispatch {
                 e.to_string(),
             )),
             _ => {
-                self.engine.clean_command_counter();
+                self.clean_command_counter();
                 Ok(framed_io)
             }
         }
