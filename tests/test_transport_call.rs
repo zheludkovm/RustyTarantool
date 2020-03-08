@@ -54,7 +54,7 @@ async fn test() -> io::Result<()> {
     let test_call_response = framed_io.next().await;
     println!("Received test result packet {:?}", test_call_response);
     if let Some(Ok((_id, resp_packet))) = test_call_response {
-        let s: (Vec<String>, Vec<u64>) = resp_packet?.decode()?;
+        let s: (Vec<String>, u64) = resp_packet?.decode()?;
         println!("resp value={:?}", s);
     }
 

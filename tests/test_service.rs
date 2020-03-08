@@ -40,9 +40,9 @@ async fn test_low_level_call() -> io::Result<()> {
     let response = client
         .send_command(CommandPacket::call("test", &(("aa", "aa"), 1)).unwrap())
         .await?;
-    let s: (Vec<String>, Vec<u64>) = response.decode_pair()?;
+    let s: (Vec<String>, u64) = response.decode_pair()?;
     println!("resp value={:?}", s);
-    assert_eq!((vec!["aa".to_string(), "aa".to_string()], vec![1]), s);
+    assert_eq!((vec!["aa".to_string(), "aa".to_string()], 1), s);
     Ok(())
 }
 
@@ -50,9 +50,9 @@ async fn test_low_level_call() -> io::Result<()> {
 async fn test_call_fn() -> io::Result<()> {
     let client = init_client();
     let response = client.call_fn("test", &(("aa", "aa"), 1)).await?;
-    let s: (Vec<String>, Vec<u64>) = response.decode_pair()?;
+    let s: (Vec<String>, u64) = response.decode_pair()?;
     println!("resp value={:?}", s);
-    assert_eq!((vec!["aa".to_string(), "aa".to_string()], vec![1]), s);
+    assert_eq!((vec!["aa".to_string(), "aa".to_string()], 1), s);
     Ok(())
 }
 

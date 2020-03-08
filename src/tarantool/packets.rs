@@ -54,7 +54,7 @@ pub enum Code {
     AUTH = 0x07,
     EVAL = 0x08,
     UPSERT = 0x09,
-    CALL = 0x010,
+    CALL = 0x0a,
     PING = 0x040,
     SUBSCRIBE = 0x066,
 }
@@ -131,7 +131,7 @@ impl CommandPacket {
         T: Serialize,
     {
         Ok(CommandPacket {
-            code: Code::OLD_CALL,
+            code: Code::CALL,
             internal_fields: vec![(Key::FUNCTION, Value::from(function))],
             command_field: vec![(Key::TUPLE, tools::serialize_to_vec_u8(params)?)],
         })

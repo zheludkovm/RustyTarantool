@@ -19,7 +19,7 @@ async fn main() -> io::Result<()> {
 
     for x in 0..count {
         let response = client.call_fn("test", &(("aa", "aa"), x)).await?;
-        let s: (Vec<String>, Vec<u64>, Vec<Option<u64>>) = response.decode()?;
+        let s: (Vec<String>, u64, Option<u64>) = response.decode()?;
         let v = COUNTER.fetch_add(1, Ordering::SeqCst);
         if v == count - 1 {
             println!("All finished res={:?}", s);
