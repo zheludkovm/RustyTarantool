@@ -81,6 +81,7 @@ pub enum ClientStatus {
     Connected,
     Disconnecting(String),
     Disconnected(String),
+    Closed,
 }
 
 pub struct Dispatch {
@@ -171,7 +172,7 @@ impl Dispatch {
             self.timeout_queue.clear();
         }
 
-        if(!self.is_command_receiver_closed) {
+        if !self.is_command_receiver_closed {
             loop {
                 match self.command_receiver.try_next() {
                     Ok(Some((_, callback_sender))) => {
@@ -277,6 +278,11 @@ impl Dispatch {
                     self.send_error_to_all(&e.to_string());
                     delay_for(Duration::from_millis(self.config.reconnect_time_ms)).await;
                 }
+            }
+
+            if self.is_command_receiver_closed {
+                self.set_status(ClientStatus::Closed).await;
+                return;
             }
         }
     }
