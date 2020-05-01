@@ -87,6 +87,7 @@ pub struct Dispatch {
     config: ClientConfig,
     // engine: DispatchEngine,
     command_receiver: mpsc::UnboundedReceiver<(CommandPacket, CallbackSender)>,
+    is_command_receiver_closed: bool,
     awaiting_callbacks: HashMap<RequestId, CallbackSender>,
     notify_callbacks: Arc<Mutex<Vec<ReconnectNotifySender>>>,
 
@@ -111,6 +112,7 @@ impl Dispatch {
         Dispatch {
             config,
             command_receiver,
+            is_command_receiver_closed:false,
             buffered_command: None,
             awaiting_callbacks: HashMap::new(),
             notify_callbacks,
@@ -169,16 +171,18 @@ impl Dispatch {
             self.timeout_queue.clear();
         }
 
-        loop {
-            match self.command_receiver.try_next() {
-                Ok(Some((_, callback_sender))) => {
-                    let _res = callback_sender.send(Err(io::Error::new(
-                        io::ErrorKind::Other,
-                        error_description.clone(),
-                    )));
-                }
-                _ => break,
-            };
+        if(!self.is_command_receiver_closed) {
+            loop {
+                match self.command_receiver.try_next() {
+                    Ok(Some((_, callback_sender))) => {
+                        let _res = callback_sender.send(Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            error_description.clone(),
+                        )));
+                    }
+                    _ => break,
+                };
+            }
         }
     }
 
@@ -207,6 +211,7 @@ impl Dispatch {
                 self.try_send_buffered_command(sink).await
             }
             None => {
+                self.is_command_receiver_closed = true;
                 //inbound sink is finished. close coroutine
                 Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
