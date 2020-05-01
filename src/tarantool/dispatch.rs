@@ -227,6 +227,7 @@ impl Dispatch {
         &mut self,
         response: Option<io::Result<(RequestId, io::Result<TarantoolResponse>)>>,
     ) -> io::Result<()> {
+        debug!("receive command! {:?} ", response);
         return match response {
             Some(Ok((request_id, Ok(command_packet)))) => {
                 debug!("receive command! {} {:?} ", request_id, command_packet);
@@ -240,7 +241,20 @@ impl Dispatch {
                 }
 
                 Ok(())
-            }
+            },
+            Some(Ok((request_id, Err(e)))) => {
+                debug!("receive command! {} {:?} ", request_id, e);
+                if let Some(_) = self.timeout_time_ms {
+                    if let Some(delay_key) = self.timeout_id_to_key.remove(&request_id) {
+                        self.timeout_queue.remove(&delay_key);
+                    }
+                }
+                if let Some(callback) = self.awaiting_callbacks.remove(&request_id) {
+                    let _send_res = callback.send(Err(e));
+                }
+
+                Ok(())
+            },
             None => Err(io::Error::new(
                 io::ErrorKind::ConnectionAborted,
                 "return none from stream!",

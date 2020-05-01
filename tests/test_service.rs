@@ -69,6 +69,25 @@ async fn test_select() -> io::Result<()> {
 }
 
 #[tokio::test]
+async fn test_error() -> io::Result<()> {
+    let client = init_client();
+    let tuple = (44, "test_insert");
+    client.delete(SPACE_ID, &tuple).await?;
+    let _r = client.insert(SPACE_ID, &tuple).await?;
+    let response = client.insert(SPACE_ID, &tuple).await;
+    println!("response={:?}", response);
+    match response {
+        Err(_) => {}
+        _ => assert!(false)
+    }
+    client.delete(SPACE_ID, &tuple).await?;
+    // assert_eq!(Err(io::Error::new(io::ErrorKind::Other, "Duplicate key exists in unique index \'primary\' in space \'target_space\'")),
+    //            response);
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_delete_insert_update() -> io::Result<()> {
     let client = init_client();
     let tuple = (3, "test_insert");
