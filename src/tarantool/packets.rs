@@ -57,6 +57,8 @@ pub enum Code {
     CALL = 0x0a,
     PING = 0x040,
     SUBSCRIBE = 0x066,
+    EXECUTE = 0x0b,
+    // PREPARE = 0x0d,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -80,6 +82,11 @@ pub enum Key {
     UPSERT_OPS = 0x28,
     DATA = 0x30,
     ERROR = 0x31,
+
+    STMT_ID = 0x43,
+    SQL_TEXT = 0x40,
+    SQL_BIND = 0x41,
+    OPTIONS = 0x2b,
 }
 
 impl TarantoolResponse {
@@ -130,10 +137,15 @@ impl CommandPacket {
     where
         T: Serialize,
     {
+        CommandPacket::call_raw(function, tools::serialize_to_vec_u8(params)?)
+    }
+
+    pub fn call_raw(function: &str, params: Vec<u8>) -> io::Result<CommandPacket>
+    {
         Ok(CommandPacket {
             code: Code::CALL,
             internal_fields: vec![(Key::FUNCTION, Value::from(function))],
-            command_field: vec![(Key::TUPLE, tools::serialize_to_vec_u8(params)?)],
+            command_field: vec![(Key::TUPLE, params)],
         })
     }
 
@@ -252,4 +264,32 @@ impl CommandPacket {
             command_field: vec![],
         })
     }
+
+    pub fn exec_sql<T>(sql: &str, args: &T) -> io::Result<CommandPacket>
+        where
+            T: Serialize,
+    {
+        CommandPacket::exec_sql_raw(sql, tools::serialize_to_vec_u8(args)?)
+    }
+
+    pub fn exec_sql_raw(sql: &str, args_raw: Vec<u8>) -> io::Result<CommandPacket>
+    {
+        Ok(CommandPacket {
+            code: Code::EXECUTE,
+            internal_fields: vec![(Key::SQL_TEXT, Value::from(sql))],
+            command_field: vec![
+                (Key::SQL_BIND, args_raw),
+                (Key::OPTIONS, tools::serialize_to_vec_u8(&())?),
+            ],
+        })
+    }
+
+    // pub fn prepare_stmt(sql: String) -> io::Result<CommandPacket>
+    // {
+    //     Ok(CommandPacket {
+    //         code: Code::PREPARE,
+    //         internal_fields: vec![(Key::SQL_TEXT, Value::from(sql))],
+    //         command_field: vec![],
+    //     })
+    // }
 }

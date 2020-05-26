@@ -1,5 +1,5 @@
 pub use crate::tarantool::packets::{CommandPacket, TarantoolRequest, TarantoolResponse};
-pub use crate::tarantool::tools::serialize_to_vec_u8;
+pub use crate::tarantool::tools::{serialize_to_vec_u8, serialize_array};
 use futures_channel::mpsc;
 use futures_channel::oneshot;
 use serde::Serialize;
@@ -56,6 +56,11 @@ pub struct Client {
     notify_callbacks: Arc<Mutex<Vec<dispatch::ReconnectNotifySender>>>,
 }
 
+pub struct PreparedArgs {
+    client: Client,
+    args: Vec<Vec<u8>>
+}
+
 impl Client {
     /// manually create client by consume Client Config
     pub fn new(config: ClientConfig) -> Client {
@@ -74,6 +79,13 @@ impl Client {
             )))),
             status,
             notify_callbacks,
+        }
+    }
+
+    pub fn prepare_call_args(&self) -> PreparedArgs {
+        PreparedArgs {
+            client : self.clone(),
+            args: vec![]
         }
     }
 
@@ -413,6 +425,36 @@ impl Client {
             .await
     }
 
+    ///eval sql expression in tarantool
+    ///
+    /// # Examples
+    ///
+    /// ```text
+    /// client.exec_sql("select * from TABLE1 where COLUMN1=?".to_string(), &(1,)).await?;
+    ///
+    #[inline(always)]
+    pub async fn exec_sql<T>(&self, sql: &str, args: &T) -> io::Result<TarantoolResponse>
+        where
+            T: Serialize,
+    {
+        self.send_command(CommandPacket::exec_sql(sql, args).unwrap())
+            .await
+    }
+
+    // ///prepare sql expression in tarantool
+    // ///
+    // /// # Examples
+    // ///
+    // /// ```text
+    // /// client.prepare_stmt("select * from TABLE1 where COLUMN1=?".to_string(), &(1,)).await?;
+    // ///
+    // #[inline(always)]
+    // pub async fn prepare_stmt(&self, sql: String) -> io::Result<TarantoolResponse>
+    // {
+    //     self.send_command(CommandPacket::prepare_stmt(sql).unwrap())
+    //         .await
+    // }
+
     ///ping tarantool server, return empty response in success
     ///
     /// # Examples
@@ -423,5 +465,63 @@ impl Client {
     #[inline(always)]
     pub async fn ping(&self) -> io::Result<TarantoolResponse> {
         self.send_command(CommandPacket::ping().unwrap()).await
+    }
+}
+
+
+impl PreparedArgs {
+    pub fn add_arg<T>(mut self, arg: &T) -> io::Result<PreparedArgs>
+        where
+            T: Serialize
+    {
+        self.args.push(tools::serialize_to_vec_u8(arg)?);
+        Ok(self)
+    }
+
+    ///eval sql expression in tarantool
+    ///
+    /// # Examples
+    ///
+    /// ```text
+    /// let response = client
+    //         .prepare_call_args()
+    //         .add_arg(&1)?
+    //         .exec_sql("select * from TABLE1 where COLUMN1=?".to_string()).await?;
+    ///
+    #[inline(always)]
+    pub async fn exec_sql(self, sql: &str) -> io::Result<TarantoolResponse>
+    {
+        self.client.send_command(CommandPacket::exec_sql_raw(sql, serialize_array(&self.args)?).unwrap())
+            .await
+    }
+
+    /// call tarantool stored procedure
+    ///
+    /// params mast be serializable to MsgPack tuple by Serde - rust tuple or vector or struct (by default structs serialized as tuple)
+    ///
+    /// order of fields in serializes tuple is order od parameters of procedure
+    ///
+    ///  # Examples
+    ///
+    /// lua function on tarantool
+    /// ```lua
+    /// function test(a,b)
+    ///   return a,b,11
+    ///  end
+    /// ```
+    ///
+    /// rust code
+    /// ```text
+    ///  let response = client
+    //         .prepare_call_args()
+    //         .add_arg(&("aa", "aa"))?
+    //         .add_arg(&1)?
+    //         .call_fn("test").await?;
+    ///
+    #[inline(always)]
+    pub async fn call_fn(self, function: &str) -> io::Result<TarantoolResponse>
+    {
+        self.client.send_command(CommandPacket::call_raw(function, serialize_array(&self.args)?).unwrap())
+            .await
     }
 }

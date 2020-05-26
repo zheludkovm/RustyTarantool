@@ -57,6 +57,20 @@ async fn test_call_fn() -> io::Result<()> {
 }
 
 #[tokio::test]
+async fn test_call_fn_args() -> io::Result<()> {
+    let client = init_client();
+    let response = client
+        .prepare_call_args()
+        .add_arg(&("aa", "aa"))?
+        .add_arg(&1)?
+        .call_fn("test").await?;
+    let s: (Vec<String>, u64) = response.decode_pair()?;
+    println!("resp value={:?}", s);
+    assert_eq!((vec!["aa".to_string(), "aa".to_string()], 1), s);
+    Ok(())
+}
+
+#[tokio::test]
 async fn test_select() -> io::Result<()> {
     let client = init_client();
     let key = (1,);
@@ -151,6 +165,42 @@ async fn test_eval() -> io::Result<()> {
     assert_eq!(id, s);
     Ok(())
 }
+
+#[tokio::test]
+async fn test_sql() -> io::Result<()> {
+    let client = init_client();
+
+    let response = client.exec_sql("select * from TABLE1 where COLUMN1=?", &(1,)).await?;
+    let row: Vec<(u32, String)> = response.decode()?;
+    println!("resp value={:?}", row);
+    assert_eq!(row, vec![(1,"1".to_string())]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_sql_args() -> io::Result<()> {
+    let client = init_client();
+
+    let response = client
+        .prepare_call_args()
+        .add_arg(&1)?
+        .exec_sql("select * from TABLE1 where COLUMN1=?").await?;
+    let row: Vec<(u32, String)> = response.decode()?;
+    println!("resp value={:?}", row);
+    assert_eq!(row, vec![(1,"1".to_string())]);
+    Ok(())
+}
+
+// #[tokio::test]
+// async fn test_prepare_stmt() -> io::Result<()> {
+//     let client = init_client();
+//
+//     let response = client.prepare_stmt("select * from TABLE1 where COLUMN1=?".to_string()).await?;
+//     let row: Vec<(u32, String)> = response.decode()?;
+//     println!("resp value={:?}", row);
+//     assert_eq!(row, vec![(1,"1".to_string())]);
+//     Ok(())
+// }
 
 #[tokio::test]
 async fn test_ping() -> io::Result<()> {

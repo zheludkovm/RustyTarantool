@@ -46,9 +46,20 @@ let client = ClientConfig::new("127.0.0.1:3301", "rust", "rust")
                      .set_reconnect_time_ms(2000)
                      .build();
 
-let response = client.call_fn2("test", &("param11", "param12") , &2).await?;
-let res : ((String,String), u64, Option<u64>) = response.decode_trio()?;
+let response = client
+    .prepare_call_args()
+    .add_arg(&("aa", "aa"))?
+    .add_arg(&1)?
+    .call_fn("test").await?;
+let res: ((String,String), u64) = response.decode_pair()?;
 println!("stored procedure response ={:?}", res);
+
+let response_sql = client
+    .prepare_call_args()
+    .add_arg(&1)?
+    .exec_sql("select * from TABLE1 where COLUMN1=?").await?;
+let row: Vec<(u32, String)> = response_sql.decode()?;
+println!("resp value={:?}", row);
 
 ```
 

@@ -2,6 +2,7 @@ use base64;
 use byteorder::ReadBytesExt;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use rmp_serde::{Deserializer, Serializer};
+use rmp::encode;
 use rmpv::decode;
 use rmpv::Value;
 use serde::{Deserialize, Serialize};
@@ -26,6 +27,20 @@ pub fn serialize_to_vec_u8<S: Serialize>(v: &S) -> io::Result<Vec<u8>> {
     let mut buf = Vec::new();
     serialize_to_buf_mut(&mut buf, v)?;
     Ok(buf)
+}
+
+pub fn serialize_array(args: &Vec<Vec<u8>>) -> io::Result<Vec<u8>> {
+    let mut buf = BytesMut::new();
+    let mut writer = SafeBytesMutWriter::writer(&mut buf);
+
+    encode::write_array_len(
+        &mut writer,
+        args.len() as u32 ,
+    )?;
+    for ref arg in args {
+        io::Write::write(&mut writer, arg)?;
+    }
+    Ok(buf.to_vec())
 }
 
 pub fn map_err_to_io<E>(e: E) -> io::Error
