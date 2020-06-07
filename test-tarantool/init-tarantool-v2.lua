@@ -195,6 +195,9 @@ local function init_spaces()
 end
 
 init_spaces()
+box.execute("drop TABLE1")
+box.execute("CREATE TABLE table1 (column1 INTEGER PRIMARY KEY autoincrement, column2 VARCHAR(100))")
+box.execute("insert into TABLE1 values(1,'1')")
 
 json=require('json')
 fiber = require('fiber')

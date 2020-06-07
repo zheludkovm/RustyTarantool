@@ -37,14 +37,11 @@ async fn index(
     params: web::Query<CountryRequest>,
     tarantool_client: web::Data<Client>,
 ) -> io::Result<HttpResponse> {
-    let response = tarantool_client
-        .call_fn3(
-            "test_search",
-            &params.country_name,
-            &params.region,
-            &params.sub_region,
-        )
-        .await?;
+    let response = tarantool_client.prepare_fn_call("test_search")
+        .bind_ref(&params.country_name)?
+        .bind_ref(&params.region)?
+        .bind_ref(&params.sub_region)?
+        .execute().await?;
     Ok(HttpResponse::Ok().json(CountryResponse {
         countries: response.decode_single()?,
     }))

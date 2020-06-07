@@ -1,3 +1,4 @@
+//901-36-89-47-8
 use base64;
 use byteorder::ReadBytesExt;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
@@ -9,7 +10,18 @@ use serde::{Deserialize, Serialize};
 use sha1::Sha1;
 use std::error;
 use std::io;
-use std::io::Cursor;
+use std::io::{Cursor};
+use std::collections::HashMap;
+
+pub fn decode_serde_optional<'de, T>( data: &Option<Bytes>) -> Option<T>
+    where T:Deserialize<'de>
+{
+    data.as_ref()
+        .and_then(|meta_bytes| {
+            let res: io::Result<T> = decode_serde(Cursor::new(meta_bytes));
+            res.ok()
+        })
+}
 
 pub fn decode_serde<'de, T, R>(r: R) -> io::Result<T>
 where
@@ -57,30 +69,66 @@ pub fn make_map_err_to_io() -> io::Error {
     io::Error::new(io::ErrorKind::Other, "Cant get key from map!")
 }
 
-pub fn search_key_in_msgpack_map(mut r: Cursor<BytesMut>, search_key: u64) -> io::Result<Bytes> {
-    r.read_u8()?;
-    if r.remaining() == 0 {
-        Ok(Bytes::new())
-    } else {
-        while r.remaining() != 0 {
-            let key = decode::read_value(&mut r).map_err(map_err_to_io)?;
-            match key {
-                Value::Integer(k) if k.is_u64() && k.as_u64().unwrap() == search_key => {
-                    let pos = r.position();
-                    let mut res_buf = r.into_inner();
-                    //                    res_buf.split_to(pos as usize);
-                    res_buf.advance(pos as usize);
-                    return Ok(res_buf.freeze());
-                }
-                _ => {}
-            }
-        }
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Incorrect headers msg pack type!",
-        ))
+pub fn parse_msgpack_map(rr: Cursor<BytesMut>) -> io::Result<HashMap<u64,Bytes>> {
+    let pos = rr.position();
+    let mut bytes_mut = rr.into_inner();
+    let positions = get_entries_positions(pos, bytes_mut.as_ref())?;
+    let mut result: HashMap<u64, Bytes> = HashMap::new();
+
+    let mut counter:usize = 0;
+    for (key, (start, end)) in positions {
+        bytes_mut.advance(start-counter);
+        let value = bytes_mut.split_to(end-start);
+        result.insert(key, value.freeze());
+        counter = end;
     }
+
+    Ok(result)
 }
+
+fn get_entries_positions(pos: u64, inner: &[u8]) -> io::Result<Vec<(u64, (usize, usize))>> {
+    let mut r = Cursor::new(inner);
+    r.set_position(pos);
+    let mut result: Vec<(u64, (usize, usize))> = Vec::new();
+    r.read_u8()?;
+    while r.remaining() != 0 {
+        let key = decode::read_value_ref(&mut r).map_err(map_err_to_io)?;
+        let start = r.position();
+        let _value = decode::read_value_ref(&mut r).map_err(map_err_to_io)?;
+        let end = r.position();
+        result.push((key.as_u64().unwrap(), (start as usize, end as usize)));
+    }
+    Ok(result)
+}
+
+// pub fn search_key_in_msgpack_map(r: Cursor<BytesMut>, search_key: u64) -> io::Result<Bytes> {
+//     Ok(parse_msgpack_map(r)?.remove(&search_key).unwrap_or(Bytes::new()))
+// }
+
+// pub fn search_key_in_msgpack_map1(mut r: Cursor<BytesMut>, search_key: u64) -> io::Result<Bytes> {
+//     r.read_u8()?;
+//     if r.remaining() == 0 {
+//         Ok(Bytes::new())
+//     } else {
+//         while r.remaining() != 0 {
+//             let key = decode::read_value(&mut r).map_err(map_err_to_io)?;
+//             match key {
+//                 Value::Integer(k) if k.is_u64() && k.as_u64().unwrap() == search_key => {
+//                     let pos = r.position();
+//                     let mut res_buf = r.into_inner();
+//                     //                    res_buf.split_to(pos as usize);
+//                     res_buf.advance(pos as usize);
+//                     return Ok(res_buf.freeze());
+//                 }
+//                 _ => {}
+//             }
+//         }
+//         Err(io::Error::new(
+//             io::ErrorKind::Other,
+//             "Incorrect headers msg pack type!",
+//         ))
+//     }
+// }
 
 pub fn get_map_value(map: &Vec<(Value, Value)>, key: u64) -> io::Result<u64> {
     map.iter()

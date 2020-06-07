@@ -9,11 +9,12 @@ extern crate rmp_serde;
 extern crate rmpv;
 extern crate serde;
 
-use rusty_tarantool::tarantool::packets::CommandPacket;
+use rusty_tarantool::tarantool::packets::{CommandPacket, TarantoolSqlResponse, UntypedRow};
 use rusty_tarantool::tarantool::{serialize_to_vec_u8, Client, ClientConfig, IteratorType};
 
 use std::io;
 use std::sync::Once;
+use rmpv::Value;
 
 static INIT: Once = Once::new();
 
@@ -27,6 +28,7 @@ fn setup_logger() {
 
 fn init_client() -> Client {
     setup_logger();
+    println!("init client");
 
     ClientConfig::new("127.0.0.1:3301", "rust", "rust")
         .set_timeout_time_ms(2000)
@@ -60,10 +62,10 @@ async fn test_call_fn() -> io::Result<()> {
 async fn test_call_fn_args() -> io::Result<()> {
     let client = init_client();
     let response = client
-        .prepare_call_args()
-        .add_arg(&("aa", "aa"))?
-        .add_arg(&1)?
-        .call_fn("test").await?;
+        .prepare_fn_call("test")
+        .bind_ref(&("aa", "aa"))?
+        .bind(1)?
+        .execute().await?;
     let s: (Vec<String>, u64) = response.decode_pair()?;
     println!("resp value={:?}", s);
     assert_eq!((vec!["aa".to_string(), "aa".to_string()], 1), s);
@@ -158,7 +160,7 @@ async fn test_upsert() -> io::Result<()> {
 async fn test_eval() -> io::Result<()> {
     let client = init_client();
 
-    let response = client.eval("return ...\n".to_string(), &(1, 2)).await?;
+    let response = client.eval("return ...\n", &(1, 2)).await?;
     let s: (u32, u32) = response.decode()?;
     let id: (u32, u32) = (1, 2);
     println!("resp value={:?}", s);
@@ -178,16 +180,63 @@ async fn test_sql() -> io::Result<()> {
 }
 
 #[tokio::test]
-async fn test_sql_args() -> io::Result<()> {
+async fn test_sql_bind() -> io::Result<()> {
     let client = init_client();
 
-    let response = client
-        .prepare_call_args()
-        .add_arg(&1)?
-        .exec_sql("select * from TABLE1 where COLUMN1=?").await?;
-    let row: Vec<(u32, String)> = response.decode()?;
-    println!("resp value={:?}", row);
-    assert_eq!(row, vec![(1,"1".to_string())]);
+    let response : TarantoolSqlResponse = client
+        .prepare_sql("select *, true, 1.1 from TABLE1 where COLUMN1=?")
+        .bind_ref(&1)?
+        .execute().await?;
+    let meta = response.metadata();
+    let rows: Vec<(u32, String, bool, f32)> = response.decode_result_set()?;
+
+    println!("resp value={:?}", rows);
+    println!("metadata={:?}", meta);
+    assert_eq!(rows, vec![(1,"1".to_string(), true, 1.1)]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_sql_update() -> io::Result<()> {
+    let client = init_client();
+
+    let response : TarantoolSqlResponse = client
+        .prepare_sql("UPDATE TABLE1 set column2='1' where column1=?")
+        .bind(1)?
+        .execute().await?;
+    let meta = response.metadata();
+    println!("metadata={:?}", meta);
+    assert_eq!(meta.row_count, Some(1));
+    Ok(())
+}
+#[tokio::test]
+async fn test_sql_autoincrement() -> io::Result<()> {
+    let client = init_client();
+
+    let response : TarantoolSqlResponse = client
+        .prepare_sql("insert into TABLE1 values(NULL,'2')")
+        .execute().await?;
+    let meta = response.metadata();
+    println!("metadata={:?}", meta);
+    assert_eq!(meta.row_count, Some(1));
+    assert_eq!(meta.auto_increment_ids.unwrap().len(), 1);
+    Ok(())
+}
+
+#[tokio::test]
+async fn test_untyped_decode_sql_result() -> io::Result<()> {
+    let client = init_client();
+
+    let response : TarantoolSqlResponse = client
+        .prepare_sql("select *, true, 1.1 from TABLE1 where COLUMN1=?")
+        .bind_ref(&1)?
+        .execute().await?;
+    let meta = response.metadata();
+    let rows: Vec<UntypedRow> = response.decode_untyped_result_set()?;
+
+    println!("resp value={:?}", rows);
+    println!("metadata={:?}", meta);
+    assert_eq!(rows, vec![vec![Value::from(1), Value::from("1"), Value::from(true), Value::from(1.1) ]]);
     Ok(())
 }
 

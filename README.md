@@ -47,19 +47,20 @@ let client = ClientConfig::new("127.0.0.1:3301", "rust", "rust")
                      .build();
 
 let response = client
-    .prepare_call_args()
-    .add_arg(&("aa", "aa"))?
-    .add_arg(&1)?
-    .call_fn("test").await?;
+    .prepare_fn_call("test")
+    .bind_ref(&("aa", "aa"))?
+    .bind(1)?
+    .execute().await?;
 let res: ((String,String), u64) = response.decode_pair()?;
 println!("stored procedure response ={:?}", res);
 
 let response_sql = client
-    .prepare_call_args()
-    .add_arg(&1)?
-    .exec_sql("select * from TABLE1 where COLUMN1=?").await?;
-let row: Vec<(u32, String)> = response_sql.decode()?;
-println!("resp value={:?}", row);
+    .prepare_sql("select * from TABLE1 where COLUMN1=?")
+    .bind(1)?
+    .execute().await?;
+    let meta = response.metadata();
+    let rows: Vec<(u32, String)> = response.decode_result_set()?;
+    println!("resp value={:?}", row);
 
 ```
 

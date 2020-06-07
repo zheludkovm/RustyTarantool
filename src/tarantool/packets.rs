@@ -8,6 +8,7 @@ use rmpv::Value;
 use serde::{Deserialize, Serialize};
 
 use bytes::Bytes;
+use std::collections::HashMap;
 
 /// tarantool auth packet
 #[derive(Debug, Clone)]
@@ -41,6 +42,58 @@ pub enum TarantoolRequest {
 pub struct TarantoolResponse {
     pub code: u64,
     pub data: Bytes,
+    pub sql_metadata: Option<Bytes>,
+    pub sql_info: Option<Bytes>,
+}
+
+pub struct TarantoolSqlResponse {
+   response: TarantoolResponse,
+}
+
+pub type UntypedRow = Vec<Value>;
+
+#[derive(Debug, PartialEq)]
+pub enum SqlMetaType {
+    boolean,
+    integer,
+ 	unsigned,
+ 	number,
+ 	string,
+ 	varbinary,
+ 	scalar,
+    unknown(String)
+}
+
+impl<'de> Deserialize<'de> for SqlMetaType {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where D: serde::de::Deserializer<'de>
+    {
+        let s = String::deserialize(deserializer)?;
+        Ok(match s.as_str() {
+            "boolean" => SqlMetaType::boolean,
+            "integer" => SqlMetaType::integer,
+            "unsigned" => SqlMetaType::unsigned,
+            "number" => SqlMetaType::number,
+            "string" => SqlMetaType::string,
+            "varbinary" => SqlMetaType::varbinary,
+            "scalar" => SqlMetaType::scalar,
+
+            v => SqlMetaType::unknown(String::from( v))
+        })
+    }
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+pub struct SqlResultMetadataFieldInfo{
+    name:String,
+    sql_type:SqlMetaType
+}
+
+#[derive(Debug, Deserialize, PartialEq)]
+pub struct SqlResultMetadata {
+    pub fields : Option<Vec<SqlResultMetadataFieldInfo>>,
+    pub row_count: Option<u64>,
+    pub auto_increment_ids: Option<Vec<u64>>,
 }
 
 #[derive(Debug, Clone)]
@@ -59,6 +112,12 @@ pub enum Code {
     SUBSCRIBE = 0x066,
     EXECUTE = 0x0b,
     // PREPARE = 0x0d,
+}
+
+#[derive(Debug, Clone)]
+pub enum SqlInfo {
+    SQL_INFO_ROW_COUNT = 0x00,
+    SQL_INFO_AUTO_INCREMENT_IDS = 0x01,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -82,6 +141,8 @@ pub enum Key {
     UPSERT_OPS = 0x28,
     DATA = 0x30,
     ERROR = 0x31,
+    METADATA = 0x32,
+    SQL_INFO = 0x42,
 
     STMT_ID = 0x43,
     SQL_TEXT = 0x40,
@@ -90,14 +151,26 @@ pub enum Key {
 }
 
 impl TarantoolResponse {
-    pub fn new(code: u64, data: Bytes) -> TarantoolResponse {
-        TarantoolResponse { code, data }
+    pub fn new_short_response(code: u64, data: Bytes) -> TarantoolResponse {
+        TarantoolResponse { code, data, sql_info: None, sql_metadata: None }
+    }
+
+    pub fn new_full_response(code: u64, data: Bytes, sql_metadata: Option<Bytes>, sql_info: Option<Bytes>) -> TarantoolResponse {
+        TarantoolResponse { code, data, sql_info, sql_metadata }
     }
 
     /// decode tarantool response to any serder deserializable struct
     pub fn decode<'de, T>(self) -> io::Result<T>
     where
         T: Deserialize<'de>,
+    {
+        tools::decode_serde(Cursor::new(self.data))
+    }
+
+    /// decode tarantool response to any serder deserializable struct
+    pub fn decode_result_set<'de, T>(self) -> io::Result<Vec<T>>
+        where
+            T: Deserialize<'de>,
     {
         tools::decode_serde(Cursor::new(self.data))
     }
@@ -131,6 +204,54 @@ impl TarantoolResponse {
         Ok((r1, r2, r3))
     }
 }
+
+impl Into<TarantoolSqlResponse> for TarantoolResponse {
+    fn into(self) -> TarantoolSqlResponse {
+        TarantoolSqlResponse{ response:self}
+    }
+}
+
+
+
+impl  TarantoolSqlResponse {
+    /// decode tarantool response to any serder deserializable struct
+    pub fn decode_result_set<'de, T>(self) -> io::Result<Vec<T>>
+        where
+            T: Deserialize<'de>,
+    {
+        tools::decode_serde(Cursor::new(self.response.data))
+    }
+
+    ///decode rows to vec of columns
+    pub fn decode_untyped_result_set(self) -> io::Result<Vec<UntypedRow>> {
+        tools::decode_serde(Cursor::new(self.response.data))
+    }
+
+    ///result set metadata
+    pub fn metadata(&self) -> SqlResultMetadata {
+        let sql_info : Option<HashMap<u8, Value>> = tools::decode_serde_optional(&self.response.sql_info);
+        println!("sql_info={:?}", sql_info);
+        let sql_info_fields = sql_info
+            .map(|mut info| {
+                (info.remove(&(SqlInfo::SQL_INFO_ROW_COUNT as u8)).and_then(|v|v.as_u64()),
+                 info.remove(&(SqlInfo::SQL_INFO_AUTO_INCREMENT_IDS as u8))
+                     .and_then(|val|val.as_array().map(|arr|{
+                         arr.iter().flat_map(|e|e.as_u64()).collect()
+                     }))
+                )
+            }).unwrap_or((None, None));
+
+        let fields : Option<Vec<SqlResultMetadataFieldInfo>> = tools::decode_serde_optional( &self.response.sql_metadata);
+        SqlResultMetadata {
+            fields,
+            row_count:sql_info_fields.0,
+            auto_increment_ids:sql_info_fields.1
+        }
+    }
+
+}
+
+
 
 impl CommandPacket {
     pub fn call<T>(function: &str, params: &T) -> io::Result<CommandPacket>

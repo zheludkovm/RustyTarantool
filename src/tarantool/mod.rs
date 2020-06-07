@@ -1,4 +1,4 @@
-pub use crate::tarantool::packets::{CommandPacket, TarantoolRequest, TarantoolResponse};
+pub use crate::tarantool::packets::{CommandPacket, TarantoolRequest, TarantoolResponse, TarantoolSqlResponse};
 pub use crate::tarantool::tools::{serialize_to_vec_u8, serialize_array};
 use futures_channel::mpsc;
 use futures_channel::oneshot;
@@ -56,9 +56,16 @@ pub struct Client {
     notify_callbacks: Arc<Mutex<Vec<dispatch::ReconnectNotifySender>>>,
 }
 
-pub struct PreparedArgs {
+pub struct PreparedSql {
     client: Client,
-    args: Vec<Vec<u8>>
+    sql: String,
+    params: Vec<Vec<u8>>
+}
+
+pub struct PreparedFunctionCall {
+    client: Client,
+    function: String,
+    params: Vec<Vec<u8>>
 }
 
 impl Client {
@@ -82,10 +89,46 @@ impl Client {
         }
     }
 
-    pub fn prepare_call_args(&self) -> PreparedArgs {
-        PreparedArgs {
+    /// prepare sql call
+    ///
+    ///  # Examples
+    ///
+    /// rust code
+    /// ```text
+    ///     let response : TarantoolSqlResponse<(u32, String)> = client
+    ///         .prepare_sql("select * from TABLE1 where COLUMN1=?")
+    ///         .bind(&1)?
+    ///         .execute().await?;
+    ///     let rows = response.decode_result_set()?;
+    pub fn prepare_sql<T>(&self, sql: T) -> PreparedSql
+        where   T:Into<String>
+    {
+        PreparedSql {
             client : self.clone(),
-            args: vec![]
+            sql: String::from(sql.into()),
+            params: vec![]
+        }
+    }
+
+    /// prepare call to stored procedure
+    ///
+    ///  # Examples
+    ///
+    /// rust code
+    /// ```text
+    /// let response = client
+    ///         .prepare_fn_call("test")
+    ///         .bind(&("aa", "aa"))?
+    ///         .bind(&1)?
+    ///         .execute().await?;
+    ///     let s: (Vec<String>, u64) = response.decode_pair()?;
+    pub  fn prepare_fn_call<T>(&self, function_name: T) -> PreparedFunctionCall
+     where T:Into<String>
+    {
+        PreparedFunctionCall {
+            client : self.clone(),
+            function: function_name.into(),
+            params: vec![]
         }
     }
 
@@ -137,7 +180,7 @@ impl Client {
     ///
     /// params mast be serializable to MsgPack tuple by Serde - rust tuple or vector or struct (by default structs serialized as tuple)
     ///
-    /// order of fields in serializes tuple is order od parameters of procedure
+    /// order of fields in serializes tuple is order of parameters of procedure
     ///
     ///  # Examples
     ///
@@ -417,11 +460,12 @@ impl Client {
     /// client.eval("return ...\n".to_string(),&(1,2)).await?
     ///
     #[inline(always)]
-    pub async fn eval<T>(&self, expression: String, args: &T) -> io::Result<TarantoolResponse>
+    pub async fn eval<T, T1>(&self, expression: T1, args: &T) -> io::Result<TarantoolResponse>
     where
         T: Serialize,
+        T1: Into<String>
     {
-        self.send_command(CommandPacket::eval(expression, args).unwrap())
+        self.send_command(CommandPacket::eval(expression.into(), args).unwrap())
             .await
     }
 
@@ -433,11 +477,12 @@ impl Client {
     /// client.exec_sql("select * from TABLE1 where COLUMN1=?".to_string(), &(1,)).await?;
     ///
     #[inline(always)]
-    pub async fn exec_sql<T>(&self, sql: &str, args: &T) -> io::Result<TarantoolResponse>
+    pub async fn exec_sql<T, T1>(&self, sql: T1, args: &T) -> io::Result<TarantoolResponse>
         where
             T: Serialize,
+            T1: Into<String>
     {
-        self.send_command(CommandPacket::exec_sql(sql, args).unwrap())
+        self.send_command(CommandPacket::exec_sql(sql.into().as_str(), args).unwrap())
             .await
     }
 
@@ -468,13 +513,23 @@ impl Client {
     }
 }
 
+impl PreparedSql {
 
-impl PreparedArgs {
-    pub fn add_arg<T>(mut self, arg: &T) -> io::Result<PreparedArgs>
+    ///bind sql statement parameter by ref
+    pub fn bind_ref<T>(mut self, param: &T) -> io::Result<PreparedSql>
         where
             T: Serialize
     {
-        self.args.push(tools::serialize_to_vec_u8(arg)?);
+        self.params.push(tools::serialize_to_vec_u8(param)?);
+        Ok(self)
+    }
+
+    ///bind sql statement parameter
+    pub fn bind<T>(mut self, param: T) -> io::Result<PreparedSql>
+        where
+            T: Serialize
+    {
+        self.params.push(tools::serialize_to_vec_u8(&param)?);
         Ok(self)
     }
 
@@ -484,18 +539,39 @@ impl PreparedArgs {
     ///
     /// ```text
     /// let response = client
-    //         .prepare_call_args()
-    //         .add_arg(&1)?
-    //         .exec_sql("select * from TABLE1 where COLUMN1=?".to_string()).await?;
+    //         .prepare_sql("select * from TABLE1 where COLUMN1=?")
+    //         .bind(1)?
+    //         .execute().await?;
     ///
     #[inline(always)]
-    pub async fn exec_sql(self, sql: &str) -> io::Result<TarantoolResponse>
+    pub async fn execute(self) -> io::Result<TarantoolSqlResponse>
     {
-        self.client.send_command(CommandPacket::exec_sql_raw(sql, serialize_array(&self.args)?).unwrap())
-            .await
+        self.client.send_command(CommandPacket::exec_sql_raw(&self.sql.as_str(), serialize_array(&self.params)?).unwrap())
+            .await.map(|val| val.into())
+    }
+}
+
+impl PreparedFunctionCall {
+
+    ///bind call parameter by ref
+    pub fn bind_ref<T>(mut self, param: &T) -> io::Result<PreparedFunctionCall>
+        where
+            T: Serialize
+    {
+        self.params.push(tools::serialize_to_vec_u8(param)?);
+        Ok(self)
     }
 
-    /// call tarantool stored procedure
+    ///bind sql statement parameter
+    pub fn bind<T>(mut self, param: T) -> io::Result<PreparedFunctionCall>
+        where
+            T: Serialize
+    {
+        self.params.push(tools::serialize_to_vec_u8(&param)?);
+        Ok(self)
+    }
+
+       /// call tarantool stored procedure
     ///
     /// params mast be serializable to MsgPack tuple by Serde - rust tuple or vector or struct (by default structs serialized as tuple)
     ///
@@ -513,15 +589,15 @@ impl PreparedArgs {
     /// rust code
     /// ```text
     ///  let response = client
-    //         .prepare_call_args()
-    //         .add_arg(&("aa", "aa"))?
-    //         .add_arg(&1)?
-    //         .call_fn("test").await?;
+    //         .prepare_fn_call("test")
+    //         .bind_ref(&("aa", "aa"))?
+    //         .bind(1)?
+    //         .execute().await?;
     ///
     #[inline(always)]
-    pub async fn call_fn(self, function: &str) -> io::Result<TarantoolResponse>
+    pub async fn execute(self) -> io::Result<TarantoolResponse>
     {
-        self.client.send_command(CommandPacket::call_raw(function, serialize_array(&self.args)?).unwrap())
+        self.client.send_command(CommandPacket::call_raw(self.function.as_str(), serialize_array(&self.params)?).unwrap())
             .await
     }
 }
