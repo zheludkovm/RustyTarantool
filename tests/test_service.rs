@@ -10,7 +10,7 @@ extern crate rmpv;
 extern crate serde;
 
 use rusty_tarantool::tarantool::packets::{CommandPacket, TarantoolSqlResponse, UntypedRow};
-use rusty_tarantool::tarantool::{serialize_to_vec_u8, Client, ClientConfig, IteratorType};
+use rusty_tarantool::tarantool::{serialize_to_vec_u8, Client, ClientConfig, IteratorType, ExecWithParamaters};
 
 use std::io;
 use std::sync::Once;
@@ -83,6 +83,20 @@ async fn test_select() -> io::Result<()> {
     assert_eq!(vec![(1, "test-row".to_string())], s);
     Ok(())
 }
+
+// #[tokio::test]
+// async fn test_select2() -> io::Result<()> {
+//     let client = init_client();
+//     let key = (1,);
+//     let response = client.select(280, 0, &key, 0, 1000, IteratorType::ALL).await?;
+//     println!("response2: {:?}", response);
+//     let s1: Vec<Value> = response.decode()?;
+//
+//     let s: Vec<((u32))> = response.decode()?;
+//     println!("resp value={:?}", s);
+//     //assert_eq!(vec![(1, "test-row".to_string())], s);
+//     Ok(())
+// }
 
 #[tokio::test]
 async fn test_error() -> io::Result<()> {
@@ -184,15 +198,16 @@ async fn test_sql_bind() -> io::Result<()> {
     let client = init_client();
 
     let response : TarantoolSqlResponse = client
-        .prepare_sql("select *, true, 1.1 from TABLE1 where COLUMN1=?")
-        .bind_ref(&1)?
+        .prepare_sql("select *, true, 1.1, :r from TABLE1 where COLUMN1=:col")
+        .bind_named_null("r")?
+        .bind_named_ref("col", &1)?
         .execute().await?;
     let meta = response.metadata();
-    let rows: Vec<(u32, String, bool, f32)> = response.decode_result_set()?;
+    let rows: Vec<(u32, String, bool, f32, Option<String>)> = response.decode_result_set()?;
 
     println!("resp value={:?}", rows);
     println!("metadata={:?}", meta);
-    assert_eq!(rows, vec![(1,"1".to_string(), true, 1.1)]);
+    assert_eq!(rows, vec![(1,"1".to_string(), true, 1.1, Option::None)]);
     Ok(())
 }
 

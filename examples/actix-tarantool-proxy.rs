@@ -7,7 +7,7 @@ use serde_derive::{Deserialize, Serialize};
 use actix_web::{get, web, App, HttpResponse, HttpServer};
 use futures::{select, FutureExt};
 use futures::stream::{StreamExt};
-use rusty_tarantool::tarantool::{Client, ClientConfig};
+use rusty_tarantool::tarantool::{Client, ClientConfig, ExecWithParamaters};
 use std::io;
 
 #[derive(Debug, Deserialize, PartialEq, Serialize)]

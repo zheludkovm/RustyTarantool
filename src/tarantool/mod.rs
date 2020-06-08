@@ -16,6 +16,7 @@ use crate::tarantool::dispatch::{
     CallbackSender, Dispatch, ERROR_CLIENT_DISCONNECTED, ERROR_DISPATCH_THREAD_IS_DEAD,
 };
 pub use crate::tarantool::dispatch::{ClientConfig, ClientStatus};
+use rmpv::Value;
 
 impl ClientConfig {
     pub fn build(self) -> Client {
@@ -54,6 +55,64 @@ pub struct Client {
     dispatch: Arc<Mutex<Option<Dispatch>>>,
     status: Arc<RwLock<ClientStatus>>,
     notify_callbacks: Arc<Mutex<Vec<dispatch::ReconnectNotifySender>>>,
+}
+
+pub trait ExecWithParamaters {
+    fn bind_raw(self, param: Vec<u8>) -> io::Result<Self>
+        where Self: std::marker::Sized;
+
+    ///bind named parameter
+    fn bind_named_ref<T : Serialize, T1:Into<String>>(self, name: T1, param: &T) -> io::Result<Self>
+        where Self: std::marker::Sized,
+
+    {
+        let mut name_s = name.into();
+        name_s.insert(0,':');
+
+        self.bind_raw(tools::serialize_one_element_map(
+            name_s,
+            tools::serialize_to_vec_u8(param)?)?)
+    }
+
+    ///bind parameter
+    fn bind_ref<T : Serialize>(self, param: &T) -> io::Result<Self>
+        where Self: std::marker::Sized
+    {
+        self.bind_raw(tools::serialize_to_vec_u8(param)?)
+    }
+
+    ///bind named parameter
+    fn bind_named<T, T1>(self, name: T1,param: T) -> io::Result<Self>
+        where T: Serialize,
+              Self: std::marker::Sized,
+              T1:Into<String>
+    {
+        self.bind_named_ref(name, &param)
+    }
+
+
+    ///bind parameter
+    fn bind<T>(self, param: T) -> io::Result<Self>
+        where T: Serialize,
+              Self: std::marker::Sized
+    {
+        self.bind_ref(&param)
+    }
+
+    ///bind null
+    fn bind_null(self) -> io::Result<Self>
+        where  Self: std::marker::Sized
+    {
+        self.bind_ref(&Value::Nil)
+    }
+
+    ///bind named null as parameter
+    fn bind_named_null<T1>(self, name: T1) -> io::Result<Self>
+        where  Self: std::marker::Sized,
+               T1:Into<String>
+    {
+        self.bind_named_ref(name, &Value::Nil)
+    }
 }
 
 pub struct PreparedSql {
@@ -513,25 +572,18 @@ impl Client {
     }
 }
 
+
+impl ExecWithParamaters for PreparedSql {
+
+    ///bind raw parameter
+    fn bind_raw(mut self, param: Vec<u8>) -> io::Result<PreparedSql>  {
+        self.params.push(param);
+        Ok(self)
+    }
+}
+
+
 impl PreparedSql {
-
-    ///bind sql statement parameter by ref
-    pub fn bind_ref<T>(mut self, param: &T) -> io::Result<PreparedSql>
-        where
-            T: Serialize
-    {
-        self.params.push(tools::serialize_to_vec_u8(param)?);
-        Ok(self)
-    }
-
-    ///bind sql statement parameter
-    pub fn bind<T>(mut self, param: T) -> io::Result<PreparedSql>
-        where
-            T: Serialize
-    {
-        self.params.push(tools::serialize_to_vec_u8(&param)?);
-        Ok(self)
-    }
 
     ///eval sql expression in tarantool
     ///
@@ -551,27 +603,17 @@ impl PreparedSql {
     }
 }
 
+impl ExecWithParamaters for PreparedFunctionCall {
+
+    ///bind raw parameter
+    fn bind_raw(mut self, param: Vec<u8>) -> io::Result<PreparedFunctionCall>  {
+        self.params.push(param);
+        Ok(self)
+    }
+}
+
 impl PreparedFunctionCall {
-
-    ///bind call parameter by ref
-    pub fn bind_ref<T>(mut self, param: &T) -> io::Result<PreparedFunctionCall>
-        where
-            T: Serialize
-    {
-        self.params.push(tools::serialize_to_vec_u8(param)?);
-        Ok(self)
-    }
-
-    ///bind sql statement parameter
-    pub fn bind<T>(mut self, param: T) -> io::Result<PreparedFunctionCall>
-        where
-            T: Serialize
-    {
-        self.params.push(tools::serialize_to_vec_u8(&param)?);
-        Ok(self)
-    }
-
-       /// call tarantool stored procedure
+    /// call tarantool stored procedure
     ///
     /// params mast be serializable to MsgPack tuple by Serde - rust tuple or vector or struct (by default structs serialized as tuple)
     ///
@@ -589,10 +631,10 @@ impl PreparedFunctionCall {
     /// rust code
     /// ```text
     ///  let response = client
-    //         .prepare_fn_call("test")
-    //         .bind_ref(&("aa", "aa"))?
-    //         .bind(1)?
-    //         .execute().await?;
+    ///         .prepare_fn_call("test")
+    ///         .bind_ref(&("aa", "aa"))?
+    ///         .bind(1)?
+    ///         .execute().await?;
     ///
     #[inline(always)]
     pub async fn execute(self) -> io::Result<TarantoolResponse>

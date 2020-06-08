@@ -41,6 +41,19 @@ pub fn serialize_to_vec_u8<S: Serialize>(v: &S) -> io::Result<Vec<u8>> {
     Ok(buf)
 }
 
+pub fn serialize_one_element_map(name:String, value: Vec<u8>) -> io::Result<Vec<u8>> {
+    let mut buf = BytesMut::new();
+    let mut writer = SafeBytesMutWriter::writer(&mut buf);
+
+    encode::write_map_len(
+        &mut writer,
+        1,
+    )?;
+    encode::write_str(&mut writer, name.as_str())?;
+    io::Write::write(&mut writer, &value)?;
+    Ok(buf.to_vec())
+}
+
 pub fn serialize_array(args: &Vec<Vec<u8>>) -> io::Result<Vec<u8>> {
     let mut buf = BytesMut::new();
     let mut writer = SafeBytesMutWriter::writer(&mut buf);
@@ -59,8 +72,9 @@ pub fn map_err_to_io<E>(e: E) -> io::Error
 where
     E: Into<Box<dyn error::Error + Send + Sync>>,
 {
-    error!("Error! {:?}", e.into());
-    io::Error::new(io::ErrorKind::Other, "")
+    let errr = e.into().to_string();
+    error!("Error! {:?}", errr);
+    io::Error::new(io::ErrorKind::Other, errr)
 }
 
 #[allow(dead_code)]
