@@ -27,8 +27,8 @@ pub struct TarantoolCodec {
     salt: Option<Vec<u8>>,
 }
 
-impl TarantoolCodec {
-    pub fn new() -> TarantoolCodec {
+impl Default for TarantoolCodec {
+    fn default() -> Self {
         TarantoolCodec {
             is_greetings_received: false,
             salt: None,
@@ -51,17 +51,15 @@ impl Decoder for TarantoolCodec {
                 self.is_greetings_received = true;
                 decode_greetings(self, buf)
             }
+        } else if buf.len() < 5 {
+            Ok(None)
         } else {
-            if buf.len() < 5 {
+            let size: usize = decode_serde(&buf[0..5])?;
+
+            if buf.len() - 5 < size {
                 Ok(None)
             } else {
-                let size: usize = decode_serde(&buf[0..5])?;
-
-                if buf.len() - 5 < size {
-                    Ok(None)
-                } else {
-                    Ok(Some(parse_response(buf, size)?))
-                }
+                Ok(Some(parse_response(buf, size)?))
             }
         }
     }
@@ -86,7 +84,7 @@ fn parse_response(
                 sync,
                 Ok(TarantoolResponse::new_full_response(
                     code,
-                    response_fields.remove(&(Key::DATA as u64)).unwrap_or(Bytes::new()),
+                    response_fields.remove(&(Key::DATA as u64)).unwrap_or_default(),
                     response_fields.remove(&(Key::METADATA as u64)),
                     response_fields.remove(&(Key::SQL_INFO as u64))
                     // search_key_in_msgpack_map(r, Key::DATA as u64)?,
@@ -97,7 +95,7 @@ fn parse_response(
             let response_data =
                 TarantoolResponse::new_short_response(
                     code,
-                    response_fields.remove(&(Key::ERROR as u64)).unwrap_or(Bytes::new())
+                    response_fields.remove(&(Key::ERROR as u64)).unwrap_or_default()
                 );
             let s: String = response_data.decode()?;
             error!("Tarantool ERROR >> {:?}", s);

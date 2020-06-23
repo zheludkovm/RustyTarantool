@@ -5,7 +5,6 @@ use futures_channel::oneshot;
 use serde::Serialize;
 use std::io;
 use std::sync::{Arc, Mutex, RwLock};
-use tokio;
 
 pub mod codec;
 mod dispatch;
@@ -164,7 +163,7 @@ impl Client {
     {
         PreparedSql {
             client : self.clone(),
-            sql: String::from(sql.into()),
+            sql: sql.into(),
             params: vec![]
         }
     }
@@ -217,15 +216,12 @@ impl Client {
 
         let (callback_sender, callback_receiver) = oneshot::channel();
         let send_res = self.command_sender.unbounded_send((req, callback_sender));
-        match send_res {
-            Err(_) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::Other,
-                    ERROR_DISPATCH_THREAD_IS_DEAD,
-                ));
-            }
-            _ => {}
-        };
+        if send_res.is_err() {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                ERROR_DISPATCH_THREAD_IS_DEAD,
+            ));
+        }
         match callback_receiver.await {
             Err(_) => Err(io::Error::new(
                 io::ErrorKind::Other,

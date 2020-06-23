@@ -31,7 +31,8 @@ async fn test() -> io::Result<()> {
 
     // Once we connect, send a `Handshake` with our name.
     println!("stream={:?}", tcp_stream);
-    let mut framed_io = TarantoolCodec::new().framed(tcp_stream);
+    let codec: TarantoolCodec = Default::default();
+    let mut framed_io = codec.framed(tcp_stream);
     let first_response = framed_io.next().await;
     println!("Received first packet {:?}", first_response);
     framed_io

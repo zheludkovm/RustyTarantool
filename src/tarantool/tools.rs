@@ -1,5 +1,3 @@
-//901-36-89-47-8
-use base64;
 use byteorder::ReadBytesExt;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use rmp_serde::{Deserializer, Serializer};
@@ -54,7 +52,7 @@ pub fn serialize_one_element_map(name:String, value: Vec<u8>) -> io::Result<Vec<
     Ok(buf.to_vec())
 }
 
-pub fn serialize_array(args: &Vec<Vec<u8>>) -> io::Result<Vec<u8>> {
+pub fn serialize_array(args: &[Vec<u8>]) -> io::Result<Vec<u8>> {
     let mut buf = BytesMut::new();
     let mut writer = SafeBytesMutWriter::writer(&mut buf);
 
@@ -62,7 +60,7 @@ pub fn serialize_array(args: &Vec<Vec<u8>>) -> io::Result<Vec<u8>> {
         &mut writer,
         args.len() as u32 ,
     )?;
-    for ref arg in args {
+    for arg in args {
         io::Write::write(&mut writer, arg)?;
     }
     Ok(buf.to_vec())
@@ -144,10 +142,10 @@ fn get_entries_positions(pos: u64, inner: &[u8]) -> io::Result<Vec<(u64, (usize,
 //     }
 // }
 
-pub fn get_map_value(map: &Vec<(Value, Value)>, key: u64) -> io::Result<u64> {
+pub fn get_map_value(map: &[(Value, Value)], key: u64) -> io::Result<u64> {
     map.iter()
         .filter_map(|row| match row {
-            &(Value::Integer(row_key), Value::Integer(val))
+            (Value::Integer(row_key), Value::Integer(val))
                 if row_key.as_u64() == Some(key) && val.is_u64() =>
             {
                 val.as_u64()

@@ -109,7 +109,7 @@ impl Dispatch {
         status: Arc<RwLock<ClientStatus>>,
         notify_callbacks: Arc<Mutex<Vec<ReconnectNotifySender>>>,
     ) -> Dispatch {
-        let timeout_time_ms = config.timeout_time_ms.clone();
+        let timeout_time_ms = config.timeout_time_ms;
         Dispatch {
             config,
             command_receiver,
@@ -131,7 +131,7 @@ impl Dispatch {
             self.notify_callbacks.lock().unwrap().split_off(0);
         let mut filtered_callbacks: Vec<ReconnectNotifySender> = Vec::new();
         for mut callback in callbacks {
-            if let Ok(_) = callback.send(status.clone()).await {
+            if callback.send(status.clone()).await.is_ok() {
                 filtered_callbacks.push(callback);
             }
         }
@@ -158,7 +158,7 @@ impl Dispatch {
     }
 
     ///send error to all awaiting callbacks
-    fn send_error_to_all(&mut self, error_description: &String) {
+    fn send_error_to_all(&mut self, error_description: String) {
         for (_, callback_sender) in self.awaiting_callbacks.drain() {
             let _res = callback_sender.send(Err(io::Error::new(
                 io::ErrorKind::Other,
@@ -167,22 +167,17 @@ impl Dispatch {
         }
         self.buffered_command = None;
 
-        if let Some(_) = self.timeout_time_ms {
+        if self.timeout_time_ms.is_some() {
             self.timeout_id_to_key.clear();
             self.timeout_queue.clear();
         }
 
         if !self.is_command_receiver_closed {
-            loop {
-                match self.command_receiver.try_next() {
-                    Ok(Some((_, callback_sender))) => {
-                        let _res = callback_sender.send(Err(io::Error::new(
-                            io::ErrorKind::Other,
-                            error_description.clone(),
-                        )));
-                    }
-                    _ => break,
-                };
+            while let Ok(Some((_, callback_sender))) = self.command_receiver.try_next() {
+                let _res = callback_sender.send(Err(io::Error::new(
+                    io::ErrorKind::Other,
+                    error_description.clone(),
+                )));
             }
         }
     }
@@ -228,10 +223,10 @@ impl Dispatch {
         response: Option<io::Result<(RequestId, io::Result<TarantoolResponse>)>>,
     ) -> io::Result<()> {
         debug!("receive command! {:?} ", response);
-        return match response {
+        match response {
             Some(Ok((request_id, Ok(command_packet)))) => {
                 debug!("receive command! {} {:?} ", request_id, command_packet);
-                if let Some(_) = self.timeout_time_ms {
+                if self.timeout_time_ms.is_some() {
                     if let Some(delay_key) = self.timeout_id_to_key.remove(&request_id) {
                         self.timeout_queue.remove(&delay_key);
                     }
@@ -244,7 +239,7 @@ impl Dispatch {
             },
             Some(Ok((request_id, Err(e)))) => {
                 debug!("receive command! {} {:?} ", request_id, e);
-                if let Some(_) = self.timeout_time_ms {
+                if self.timeout_time_ms.is_some() {
                     if let Some(delay_key) = self.timeout_id_to_key.remove(&request_id) {
                         self.timeout_queue.remove(&delay_key);
                     }
@@ -260,11 +255,11 @@ impl Dispatch {
                 "return none from stream!",
             )),
             _ => Ok(()),
-        };
+        }
     }
 
     fn increment_command_counter(&mut self) -> RequestId {
-        self.command_counter = self.command_counter + 1;
+        self.command_counter += 1;
         self.command_counter
     }
 
@@ -289,7 +284,7 @@ impl Dispatch {
                 Err(e) => {
                     self.set_status(ClientStatus::Disconnected(e.to_string()))
                         .await;
-                    self.send_error_to_all(&e.to_string());
+                    self.send_error_to_all(e.to_string());
                     delay_for(Duration::from_millis(self.config.reconnect_time_ms)).await;
                 }
             }
@@ -318,15 +313,16 @@ impl Dispatch {
     }
 
     async fn auth(&mut self, tcp_stream: TcpStream) -> io::Result<TarantoolFramed> {
-        let mut framed_io = TarantoolCodec::new().framed(tcp_stream);
+        let codec: TarantoolCodec = Default::default();
+        let mut framed_io = codec.framed(tcp_stream);
         let _first_response = framed_io.next().await;
         // println!("Received first packet {:?}", first_response);
         framed_io
             .send((
                 2,
                 TarantoolRequest::Auth(AuthPacket {
-                    login: String::from(self.config.login.clone()),
-                    password: String::from(self.config.password.clone()),
+                    login: self.config.login.clone(),
+                    password: self.config.password.clone(),
                 }),
             ))
             .await?;
