@@ -12,11 +12,13 @@ use futures_channel::oneshot;
 use futures_util::FutureExt;
 
 use tokio::net::TcpStream;
-use tokio::time::{delay_for, delay_queue, DelayQueue, Duration, Instant};
+use tokio::time::{Duration, Instant};
 use tokio_util::codec::{Decoder, Framed};
 
 use crate::tarantool::codec::{RequestId, TarantoolCodec, TarantoolFramedRequest};
 use crate::tarantool::packets::{AuthPacket, CommandPacket, TarantoolRequest, TarantoolResponse};
+use tokio_util::time::DelayQueue;
+use tokio_util::time::delay_queue;
 
 pub type TarantoolFramed = Framed<TcpStream, TarantoolCodec>;
 pub type CallbackSender = oneshot::Sender<io::Result<TarantoolResponse>>;
@@ -285,7 +287,7 @@ impl Dispatch {
                     self.set_status(ClientStatus::Disconnected(e.to_string()))
                         .await;
                     self.send_error_to_all(e.to_string());
-                    delay_for(Duration::from_millis(self.config.reconnect_time_ms)).await;
+                    tokio::time::sleep(Duration::from_millis(self.config.reconnect_time_ms)).await;
                 }
             }
 
