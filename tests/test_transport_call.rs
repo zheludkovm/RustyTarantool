@@ -17,7 +17,7 @@ use std::io;
 use tokio::net::TcpStream;
 use tokio_util::codec::Decoder;
 
-use crate::tokio::stream::StreamExt;
+use futures::stream::StreamExt;
 
 #[tokio::test]
 async fn test() -> io::Result<()> {
