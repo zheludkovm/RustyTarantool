@@ -190,7 +190,6 @@ async fn test_eval() -> io::Result<()> {
 #[tokio::test]
 async fn test_sql() -> io::Result<()> {
     let client = init_client();
-
     let response = client
         .exec_sql("select * from TABLE1 where COLUMN1=?", &(1,))
         .await?;
@@ -233,6 +232,7 @@ async fn test_sql_update() -> io::Result<()> {
     assert_eq!(meta.row_count, Some(1));
     Ok(())
 }
+
 #[tokio::test]
 async fn test_sql_autoincrement() -> io::Result<()> {
     let client = init_client();
@@ -278,10 +278,12 @@ async fn test_untyped_decode_sql_result() -> io::Result<()> {
 // async fn test_prepare_stmt() -> io::Result<()> {
 //     let client = init_client();
 //
-//     let response = client.prepare_stmt("select * from TABLE1 where COLUMN1=?".to_string()).await?;
+//     let response = client
+//         .prepare_stmt("select * from TABLE1 where COLUMN1=?".to_string())
+//         .await?;
 //     let row: Vec<(u32, String)> = response.decode()?;
 //     println!("resp value={:?}", row);
-//     assert_eq!(row, vec![(1,"1".to_string())]);
+//     assert_eq!(row, vec![(1, "1".to_string())]);
 //     Ok(())
 // }
 

@@ -394,10 +394,10 @@ impl Client {
     where
         T: Serialize,
     {
-        self.send_command(
-            CommandPacket::select(space, index, key, offset, limit, iterator as i32).unwrap(),
-        )
-        .await
+        trace!("will");
+        let msg = CommandPacket::select(space, index, key, offset, limit, iterator as i32).unwrap();
+        trace!("select: {:?}", msg);
+        self.send_command(msg).await
     }
 
     ///insert tuple to space
