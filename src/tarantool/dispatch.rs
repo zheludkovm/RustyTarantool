@@ -1,23 +1,25 @@
+use crate::tarantool::{
+    codec::{RequestId, TarantoolCodec, TarantoolFramedRequest},
+    packets::{AuthPacket, CommandPacket, TarantoolRequest, TarantoolResponse},
+};
 use core::pin::Pin;
-use std::collections::HashMap;
-use std::io;
-use std::string::ToString;
-use std::sync::{Arc, Mutex, RwLock};
-
-use futures::select;
-use futures::stream::StreamExt;
-use futures::SinkExt;
-use futures_channel::mpsc;
-use futures_channel::oneshot;
+use futures::{select, stream::StreamExt, SinkExt};
+use futures_channel::{mpsc, oneshot};
 use futures_util::FutureExt;
-
-use tokio::net::TcpStream;
-use tokio::time::{sleep, Duration, Instant};
-use tokio_util::codec::{Decoder, Framed};
-use tokio_util::time::{delay_queue, DelayQueue};
-
-use crate::tarantool::codec::{RequestId, TarantoolCodec, TarantoolFramedRequest};
-use crate::tarantool::packets::{AuthPacket, CommandPacket, TarantoolRequest, TarantoolResponse};
+use std::{
+    collections::HashMap,
+    io,
+    string::ToString,
+    sync::{Arc, Mutex, RwLock},
+};
+use tokio::{
+    net::TcpStream,
+    time::{sleep, Duration, Instant},
+};
+use tokio_util::{
+    codec::{Decoder, Framed},
+    time::{delay_queue, DelayQueue},
+};
 
 pub type TarantoolFramed = Framed<TcpStream, TarantoolCodec>;
 pub type CallbackSender = oneshot::Sender<io::Result<TarantoolResponse>>;

@@ -9,14 +9,12 @@ extern crate rmp_serde;
 extern crate rmpv;
 extern crate serde;
 
-use rusty_tarantool::tarantool::packets::{CommandPacket, TarantoolSqlResponse, UntypedRow};
+use rmpv::Value;
 use rusty_tarantool::tarantool::{
+    packets::{CommandPacket, TarantoolSqlResponse, UntypedRow},
     serialize_to_vec_u8, Client, ClientConfig, ExecWithParamaters, IteratorType,
 };
-
-use rmpv::Value;
-use std::io;
-use std::sync::Once;
+use std::{io, sync::Once};
 
 static INIT: Once = Once::new();
 

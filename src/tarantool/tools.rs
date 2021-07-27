@@ -7,9 +7,10 @@ use rmpv::Value;
 use serde::{Deserialize, Serialize};
 use sha1::Sha1;
 use std::collections::HashMap;
-use std::error;
-use std::io;
-use std::io::Cursor;
+use std::{
+    error,
+    io::{self, Cursor},
+};
 
 pub fn decode_serde_optional<'de, T>(data: &Option<Bytes>) -> Option<T>
 where

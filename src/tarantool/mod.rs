@@ -1,23 +1,23 @@
-pub use crate::tarantool::packets::{
-    CommandPacket, TarantoolRequest, TarantoolResponse, TarantoolSqlResponse,
+use crate::tarantool::dispatch::{
+    CallbackSender, Dispatch, ERROR_CLIENT_DISCONNECTED, ERROR_DISPATCH_THREAD_IS_DEAD,
 };
-pub use crate::tarantool::tools::{serialize_array, serialize_to_vec_u8};
-use futures_channel::mpsc;
-use futures_channel::oneshot;
+pub use crate::tarantool::{
+    dispatch::{ClientConfig, ClientStatus},
+    packets::{CommandPacket, TarantoolRequest, TarantoolResponse, TarantoolSqlResponse},
+    tools::{serialize_array, serialize_to_vec_u8},
+};
+use futures_channel::{mpsc, oneshot};
+use rmpv::Value;
 use serde::Serialize;
-use std::io;
-use std::sync::{Arc, Mutex, RwLock};
+use std::{
+    io,
+    sync::{Arc, Mutex, RwLock},
+};
 
 pub mod codec;
 mod dispatch;
 pub mod packets;
 mod tools;
-
-use crate::tarantool::dispatch::{
-    CallbackSender, Dispatch, ERROR_CLIENT_DISCONNECTED, ERROR_DISPATCH_THREAD_IS_DEAD,
-};
-pub use crate::tarantool::dispatch::{ClientConfig, ClientStatus};
-use rmpv::Value;
 
 impl ClientConfig {
     pub fn build(self) -> Client {

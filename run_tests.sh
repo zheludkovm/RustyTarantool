@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-set -e
 
 dir=$(dirname "$0")
 cd $dir
@@ -52,7 +51,6 @@ x() {
 	fi
 }
 
-
 will() {
 	echo "${_ansiDarkGray}${_ansiBold}WILL ${_ansiLightGray}$@${_ansiDarkGray} . . .${_ansiReset}"
 }
@@ -80,10 +78,8 @@ while [[ $# -gt 0 ]]; do
 	shift
 done
 
-set +e
 x sudo docker container stop $container
 x sudo docker container rm -f $container
-set -e
 x sudo docker run \
     --name $container \
     -p$port:3301 \

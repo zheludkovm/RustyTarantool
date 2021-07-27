@@ -17,6 +17,12 @@ Use tokio.io as base client framework
 [Latest Version]: https://img.shields.io/crates/v/rusty_tarantool.svg
 [crates.io]: https://crates.io/crates/rusty_tarantool
 
+## Run tests via tarantool in docker
+
+```bash
+# in rusty_tarantool dir
+run_tests.sh
+```
 ## Example
 
 Call echo stored procedure
@@ -25,14 +31,6 @@ run tarantool
 
 ```bash
 cd test-tarantool;tarantool init-tarantool.lua
-```
-
-or via docker
-
-
-```bash
-# in rusty_tarantool dir
-run_tests.sh
 ```
 
 Lua stored procedure: 
@@ -85,3 +83,5 @@ hyper http server connecting to tarantool
 actix-web example
 
 simple benchmark
+
+

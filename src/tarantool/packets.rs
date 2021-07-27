@@ -1,14 +1,14 @@
 #![allow(non_camel_case_types)]
-use std::io;
-use std::io::Cursor;
-use std::str;
 
 use crate::tarantool::tools;
+use bytes::Bytes;
 use rmpv::Value;
 use serde::{Deserialize, Serialize};
-
-use bytes::Bytes;
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    io::{self, Cursor},
+    str,
+};
 
 /// tarantool auth packet
 #[derive(Debug, Clone)]
