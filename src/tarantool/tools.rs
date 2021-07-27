@@ -1,24 +1,24 @@
 use byteorder::ReadBytesExt;
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use rmp_serde::{Deserializer, Serializer};
 use rmp::encode;
+use rmp_serde::{Deserializer, Serializer};
 use rmpv::decode;
 use rmpv::Value;
 use serde::{Deserialize, Serialize};
 use sha1::Sha1;
+use std::collections::HashMap;
 use std::error;
 use std::io;
-use std::io::{Cursor};
-use std::collections::HashMap;
+use std::io::Cursor;
 
-pub fn decode_serde_optional<'de, T>( data: &Option<Bytes>) -> Option<T>
-    where T:Deserialize<'de>
+pub fn decode_serde_optional<'de, T>(data: &Option<Bytes>) -> Option<T>
+where
+    T: Deserialize<'de>,
 {
-    data.as_ref()
-        .and_then(|meta_bytes| {
-            let res: io::Result<T> = decode_serde(Cursor::new(meta_bytes));
-            res.ok()
-        })
+    data.as_ref().and_then(|meta_bytes| {
+        let res: io::Result<T> = decode_serde(Cursor::new(meta_bytes));
+        res.ok()
+    })
 }
 
 pub fn decode_serde<'de, T, R>(r: R) -> io::Result<T>
@@ -39,14 +39,11 @@ pub fn serialize_to_vec_u8<S: Serialize>(v: &S) -> io::Result<Vec<u8>> {
     Ok(buf)
 }
 
-pub fn serialize_one_element_map(name:String, value: Vec<u8>) -> io::Result<Vec<u8>> {
+pub fn serialize_one_element_map(name: String, value: Vec<u8>) -> io::Result<Vec<u8>> {
     let mut buf = BytesMut::new();
     let mut writer = SafeBytesMutWriter::writer(&mut buf);
 
-    encode::write_map_len(
-        &mut writer,
-        1,
-    )?;
+    encode::write_map_len(&mut writer, 1)?;
     encode::write_str(&mut writer, name.as_str())?;
     io::Write::write(&mut writer, &value)?;
     Ok(buf.to_vec())
@@ -56,10 +53,7 @@ pub fn serialize_array(args: &[Vec<u8>]) -> io::Result<Vec<u8>> {
     let mut buf = BytesMut::new();
     let mut writer = SafeBytesMutWriter::writer(&mut buf);
 
-    encode::write_array_len(
-        &mut writer,
-        args.len() as u32 ,
-    )?;
+    encode::write_array_len(&mut writer, args.len() as u32)?;
     for arg in args {
         io::Write::write(&mut writer, arg)?;
     }
@@ -81,16 +75,16 @@ pub fn make_map_err_to_io() -> io::Error {
     io::Error::new(io::ErrorKind::Other, "Cant get key from map!")
 }
 
-pub fn parse_msgpack_map(rr: Cursor<BytesMut>) -> io::Result<HashMap<u64,Bytes>> {
+pub fn parse_msgpack_map(rr: Cursor<BytesMut>) -> io::Result<HashMap<u64, Bytes>> {
     let pos = rr.position();
     let mut bytes_mut = rr.into_inner();
     let positions = get_entries_positions(pos, bytes_mut.as_ref())?;
     let mut result: HashMap<u64, Bytes> = HashMap::new();
 
-    let mut counter:usize = 0;
+    let mut counter: usize = 0;
     for (key, (start, end)) in positions {
-        bytes_mut.advance(start-counter);
-        let value = bytes_mut.split_to(end-start);
+        bytes_mut.advance(start - counter);
+        let value = bytes_mut.split_to(end - start);
         result.insert(key, value.freeze());
         counter = end;
     }

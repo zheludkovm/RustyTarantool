@@ -84,19 +84,21 @@ fn parse_response(
                 sync,
                 Ok(TarantoolResponse::new_full_response(
                     code,
-                    response_fields.remove(&(Key::DATA as u64)).unwrap_or_default(),
+                    response_fields
+                        .remove(&(Key::DATA as u64))
+                        .unwrap_or_default(),
                     response_fields.remove(&(Key::METADATA as u64)),
-                    response_fields.remove(&(Key::SQL_INFO as u64))
-                    // search_key_in_msgpack_map(r, Key::DATA as u64)?,
+                    response_fields.remove(&(Key::SQL_INFO as u64)), // search_key_in_msgpack_map(r, Key::DATA as u64)?,
                 )),
             ))
-        },
+        }
         _ => {
-            let response_data =
-                TarantoolResponse::new_short_response(
-                    code,
-                    response_fields.remove(&(Key::ERROR as u64)).unwrap_or_default()
-                );
+            let response_data = TarantoolResponse::new_short_response(
+                code,
+                response_fields
+                    .remove(&(Key::ERROR as u64))
+                    .unwrap_or_default(),
+            );
             let s: String = response_data.decode()?;
             error!("Tarantool ERROR >> {:?}", s);
             Ok((sync, Err(io::Error::new(io::ErrorKind::Other, s))))
@@ -173,7 +175,10 @@ fn decode_greetings(
     let test = str::from_utf8(&header).map_err(map_err_to_io)?;
 
     let res = match test {
-        GREETINGS_HEADER => Ok(Some((0, Ok(TarantoolResponse::new_short_response(0, Bytes::new()))))),
+        GREETINGS_HEADER => Ok(Some((
+            0,
+            Ok(TarantoolResponse::new_short_response(0, Bytes::new())),
+        ))),
         _ => Err(io::Error::new(io::ErrorKind::Other, "Unknown header!")),
     };
     //    buf.split_to(64 - GREETINGS_HEADER_LENGTH);
