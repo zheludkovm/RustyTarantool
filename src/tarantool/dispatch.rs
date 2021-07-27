@@ -112,7 +112,7 @@ impl Dispatch {
         Dispatch {
             config,
             command_receiver,
-            is_command_receiver_closed:false,
+            is_command_receiver_closed: false,
             buffered_command: None,
             awaiting_callbacks: HashMap::new(),
             notify_callbacks,
@@ -171,7 +171,7 @@ impl Dispatch {
             self.timeout_queue.clear();
         }
 
-        if(!self.is_command_receiver_closed) {
+        if !self.is_command_receiver_closed {
             loop {
                 match self.command_receiver.try_next() {
                     Ok(Some((_, callback_sender))) => {

@@ -60,7 +60,9 @@ async fn test_call_fn() -> io::Result<()> {
 async fn test_select() -> io::Result<()> {
     let client = init_client();
     let key = (1,);
-    let response = client.select(SPACE_ID, 0, &key, 0, 100, IteratorType::EQ).await?;
+    let response = client
+        .select(SPACE_ID, 0, &key, 0, 100, IteratorType::EQ)
+        .await?;
     println!("response2: {:?}", response);
     let s: Vec<(u32, String)> = response.decode()?;
     println!("resp value={:?}", s);

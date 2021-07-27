@@ -27,6 +27,13 @@ run tarantool
 cd test-tarantool;tarantool init-tarantool.lua
 ```
 
+or via docker
+
+
+```bash
+# in rusty_tarantool dir
+run_tests.sh
+```
 
 Lua stored procedure: 
 ```lua
