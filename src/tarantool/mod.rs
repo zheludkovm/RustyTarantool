@@ -214,8 +214,6 @@ impl Client {
 
     /// send any command you manually create, this method is low level and not intended to be used
     pub async fn send_command(&self, req: CommandPacket) -> io::Result<TarantoolResponse> {
-        //        let dispatch = self.dispatch.clone();
-
         if let Some(mut extracted_dispatch) = self.dispatch.clone().lock().unwrap().take() {
             debug!("spawn coroutine!");
             //lazy spawning main coroutine in first tarantool call
@@ -394,7 +392,6 @@ impl Client {
     where
         T: Serialize,
     {
-        trace!("will");
         let msg = CommandPacket::select(space, index, key, offset, limit, iterator as i32).unwrap();
         trace!("select: {:?}", msg);
         self.send_command(msg).await

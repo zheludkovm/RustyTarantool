@@ -83,17 +83,16 @@ fn parse_response(
 
     match code {
         0 => {
-            Ok((
-                sync,
-                Ok(TarantoolResponse::new_full_response(
-                    code,
-                    response_fields
-                        .remove(&(Key::DATA as u64))
-                        .unwrap_or_default(),
-                    response_fields.remove(&(Key::METADATA as u64)),
-                    response_fields.remove(&(Key::SQL_INFO as u64)), // search_key_in_msgpack_map(r, Key::DATA as u64)?,
-                )),
-            ))
+            let response_data = TarantoolResponse::new_full_response(
+                code,
+                response_fields
+                    .remove(&(Key::DATA as u64))
+                    .unwrap_or_default(),
+                response_fields.remove(&(Key::METADATA as u64)),
+                response_fields.remove(&(Key::SQL_INFO as u64)), // search_key_in_msgpack_map(r, Key::DATA as u64)?,
+            );
+            debug!("response_data: {:?}", response_data);
+            Ok((sync, Ok(response_data)))
         }
         _ => {
             let response_data = TarantoolResponse::new_short_response(
@@ -215,23 +214,40 @@ fn create_packet(
     {
         let mut writer = SafeBytesMutWriter::writer(buf);
 
+        trace!("header_vec: {:x?}", header_vec);
         serialize_to_buf_mut(&mut writer, &Value::Map(header_vec))?;
         encode::write_map_len(
             &mut writer,
             data.len() as u32 + (additional_data.len() as u32),
         )?;
+        trace!("data: {:?}", data);
         for (ref key, ref val) in data {
+            trace!(
+                "key: {}; Value::from((*key): {:?}",
+                (*key) as u8,
+                &Value::from((*key) as u8)
+            );
             rmpv::encode::write_value(&mut writer, &Value::from((*key) as u8))?;
+            trace!("val: {:?}", val);
             rmpv::encode::write_value(&mut writer, val)?;
         }
+        trace!("additional_data: {:02X?}", additional_data);
         for (ref key, ref val) in additional_data {
+            trace!(
+                "key: {}; Value::from((*key): {:?}",
+                (*key) as u8,
+                &Value::from((*key) as u8)
+            );
             rmpv::encode::write_value(&mut writer, &Value::from((*key) as u8))?;
+            trace!("val: {:?}", val);
             io::Write::write(&mut writer, val)?;
         }
+        trace!("len: {}, buf: {:02X?}", buf.len(), buf);
     }
 
     let len = (buf.len() - start_position - 4) as u32;
     write_u32_to_slice(&mut buf[start_position..start_position + 4], len);
+    trace!("did create_packet: len: {}; buf: {:02X?}", buf.len(), buf);
 
     Ok(())
 }
