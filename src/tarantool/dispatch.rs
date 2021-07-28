@@ -1,22 +1,25 @@
+use crate::tarantool::{
+    codec::{RequestId, TarantoolCodec, TarantoolFramedRequest},
+    packets::{AuthPacket, CommandPacket, TarantoolRequest, TarantoolResponse},
+};
 use core::pin::Pin;
-use std::collections::HashMap;
-use std::io;
-use std::string::ToString;
-use std::sync::{Arc, Mutex, RwLock};
-
-use futures::select;
-use futures::stream::StreamExt;
-use futures::SinkExt;
-use futures_channel::mpsc;
-use futures_channel::oneshot;
+use futures::{select, stream::StreamExt, SinkExt};
+use futures_channel::{mpsc, oneshot};
 use futures_util::FutureExt;
-
-use tokio::net::TcpStream;
-use tokio::time::{delay_for, delay_queue, DelayQueue, Duration, Instant};
-use tokio_util::codec::{Decoder, Framed};
-
-use crate::tarantool::codec::{RequestId, TarantoolCodec, TarantoolFramedRequest};
-use crate::tarantool::packets::{AuthPacket, CommandPacket, TarantoolRequest, TarantoolResponse};
+use std::{
+    collections::HashMap,
+    io,
+    string::ToString,
+    sync::{Arc, Mutex, RwLock},
+};
+use tokio::{
+    net::TcpStream,
+    time::{sleep, Duration, Instant},
+};
+use tokio_util::{
+    codec::{Decoder, Framed},
+    time::{delay_queue, DelayQueue},
+};
 
 pub type TarantoolFramed = Framed<TcpStream, TarantoolCodec>;
 pub type CallbackSender = oneshot::Sender<io::Result<TarantoolResponse>>;
@@ -113,7 +116,7 @@ impl Dispatch {
         Dispatch {
             config,
             command_receiver,
-            is_command_receiver_closed:false,
+            is_command_receiver_closed: false,
             buffered_command: None,
             awaiting_callbacks: HashMap::new(),
             notify_callbacks,
@@ -236,7 +239,7 @@ impl Dispatch {
                 }
 
                 Ok(())
-            },
+            }
             Some(Ok((request_id, Err(e)))) => {
                 debug!("receive command! {} {:?} ", request_id, e);
                 if self.timeout_time_ms.is_some() {
@@ -249,7 +252,7 @@ impl Dispatch {
                 }
 
                 Ok(())
-            },
+            }
             None => Err(io::Error::new(
                 io::ErrorKind::ConnectionAborted,
                 "return none from stream!",
@@ -285,7 +288,7 @@ impl Dispatch {
                     self.set_status(ClientStatus::Disconnected(e.to_string()))
                         .await;
                     self.send_error_to_all(e.to_string());
-                    delay_for(Duration::from_millis(self.config.reconnect_time_ms)).await;
+                    sleep(Duration::from_millis(self.config.reconnect_time_ms)).await;
                 }
             }
 

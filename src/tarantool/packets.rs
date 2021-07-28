@@ -1,14 +1,14 @@
 #![allow(non_camel_case_types)]
-use std::io;
-use std::io::Cursor;
-use std::str;
 
 use crate::tarantool::tools;
+use bytes::Bytes;
 use rmpv::Value;
 use serde::{Deserialize, Serialize};
-
-use bytes::Bytes;
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    io::{self, Cursor},
+    str,
+};
 
 /// tarantool auth packet
 #[derive(Debug, Clone)]
@@ -47,7 +47,7 @@ pub struct TarantoolResponse {
 }
 
 pub struct TarantoolSqlResponse {
-   response: TarantoolResponse,
+    response: TarantoolResponse,
 }
 
 pub type UntypedRow = Vec<Value>;
@@ -56,17 +56,18 @@ pub type UntypedRow = Vec<Value>;
 pub enum SqlMetaType {
     boolean,
     integer,
- 	unsigned,
- 	number,
- 	string,
- 	varbinary,
- 	scalar,
-    unknown(String)
+    unsigned,
+    number,
+    string,
+    varbinary,
+    scalar,
+    unknown(String),
 }
 
 impl<'de> Deserialize<'de> for SqlMetaType {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where D: serde::de::Deserializer<'de>
+    where
+        D: serde::de::Deserializer<'de>,
     {
         let s = String::deserialize(deserializer)?;
         Ok(match s.as_str() {
@@ -78,20 +79,20 @@ impl<'de> Deserialize<'de> for SqlMetaType {
             "varbinary" => SqlMetaType::varbinary,
             "scalar" => SqlMetaType::scalar,
 
-            v => SqlMetaType::unknown(String::from( v))
+            v => SqlMetaType::unknown(String::from(v)),
         })
     }
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
-pub struct SqlResultMetadataFieldInfo{
-    name:String,
-    sql_type:SqlMetaType
+pub struct SqlResultMetadataFieldInfo {
+    name: String,
+    sql_type: SqlMetaType,
 }
 
 #[derive(Debug, Deserialize, PartialEq)]
 pub struct SqlResultMetadata {
-    pub fields : Option<Vec<SqlResultMetadataFieldInfo>>,
+    pub fields: Option<Vec<SqlResultMetadataFieldInfo>>,
     pub row_count: Option<u64>,
     pub auto_increment_ids: Option<Vec<u64>>,
 }
@@ -152,11 +153,26 @@ pub enum Key {
 
 impl TarantoolResponse {
     pub fn new_short_response(code: u64, data: Bytes) -> TarantoolResponse {
-        TarantoolResponse { code, data, sql_info: None, sql_metadata: None }
+        TarantoolResponse {
+            code,
+            data,
+            sql_info: None,
+            sql_metadata: None,
+        }
     }
 
-    pub fn new_full_response(code: u64, data: Bytes, sql_metadata: Option<Bytes>, sql_info: Option<Bytes>) -> TarantoolResponse {
-        TarantoolResponse { code, data, sql_info, sql_metadata }
+    pub fn new_full_response(
+        code: u64,
+        data: Bytes,
+        sql_metadata: Option<Bytes>,
+        sql_info: Option<Bytes>,
+    ) -> TarantoolResponse {
+        TarantoolResponse {
+            code,
+            data,
+            sql_metadata,
+            sql_info,
+        }
     }
 
     /// decode tarantool response to any serder deserializable struct
@@ -169,8 +185,8 @@ impl TarantoolResponse {
 
     /// decode tarantool response to any serder deserializable struct
     pub fn decode_result_set<'de, T>(self) -> io::Result<Vec<T>>
-        where
-            T: Deserialize<'de>,
+    where
+        T: Deserialize<'de>,
     {
         tools::decode_serde(Cursor::new(self.data))
     }
@@ -190,7 +206,7 @@ impl TarantoolResponse {
         T1: Deserialize<'de>,
         T2: Deserialize<'de>,
     {
-        Ok(tools::decode_serde(Cursor::new(self.data))?)
+        tools::decode_serde(Cursor::new(self.data))
     }
 
     ///decode tarantool response to three elements
@@ -205,19 +221,17 @@ impl TarantoolResponse {
     }
 }
 
-impl Into<TarantoolSqlResponse> for TarantoolResponse {
-    fn into(self) -> TarantoolSqlResponse {
-        TarantoolSqlResponse{ response:self}
+impl From<TarantoolResponse> for TarantoolSqlResponse {
+    fn from(from: TarantoolResponse) -> Self {
+        Self { response: from }
     }
 }
 
-
-
-impl  TarantoolSqlResponse {
+impl TarantoolSqlResponse {
     /// decode tarantool response to any serder deserializable struct
     pub fn decode_result_set<'de, T>(self) -> io::Result<Vec<T>>
-        where
-            T: Deserialize<'de>,
+    where
+        T: Deserialize<'de>,
     {
         tools::decode_serde(Cursor::new(self.response.data))
     }
@@ -229,29 +243,32 @@ impl  TarantoolSqlResponse {
 
     ///result set metadata
     pub fn metadata(&self) -> SqlResultMetadata {
-        let sql_info : Option<HashMap<u8, Value>> = tools::decode_serde_optional(&self.response.sql_info);
+        let sql_info: Option<HashMap<u8, Value>> =
+            tools::decode_serde_optional(&self.response.sql_info);
         println!("sql_info={:?}", sql_info);
         let sql_info_fields = sql_info
             .map(|mut info| {
-                (info.remove(&(SqlInfo::SQL_INFO_ROW_COUNT as u8)).and_then(|v|v.as_u64()),
-                 info.remove(&(SqlInfo::SQL_INFO_AUTO_INCREMENT_IDS as u8))
-                     .and_then(|val|val.as_array().map(|arr|{
-                         arr.iter().flat_map(|e|e.as_u64()).collect()
-                     }))
+                (
+                    info.remove(&(SqlInfo::SQL_INFO_ROW_COUNT as u8))
+                        .and_then(|v| v.as_u64()),
+                    info.remove(&(SqlInfo::SQL_INFO_AUTO_INCREMENT_IDS as u8))
+                        .and_then(|val| {
+                            val.as_array()
+                                .map(|arr| arr.iter().flat_map(|e| e.as_u64()).collect())
+                        }),
                 )
-            }).unwrap_or((None, None));
+            })
+            .unwrap_or((None, None));
 
-        let fields : Option<Vec<SqlResultMetadataFieldInfo>> = tools::decode_serde_optional( &self.response.sql_metadata);
+        let fields: Option<Vec<SqlResultMetadataFieldInfo>> =
+            tools::decode_serde_optional(&self.response.sql_metadata);
         SqlResultMetadata {
             fields,
-            row_count:sql_info_fields.0,
-            auto_increment_ids:sql_info_fields.1
+            row_count: sql_info_fields.0,
+            auto_increment_ids: sql_info_fields.1,
         }
     }
-
 }
-
-
 
 impl CommandPacket {
     pub fn call<T>(function: &str, params: &T) -> io::Result<CommandPacket>
@@ -261,8 +278,7 @@ impl CommandPacket {
         CommandPacket::call_raw(function, tools::serialize_to_vec_u8(params)?)
     }
 
-    pub fn call_raw(function: &str, params: Vec<u8>) -> io::Result<CommandPacket>
-    {
+    pub fn call_raw(function: &str, params: Vec<u8>) -> io::Result<CommandPacket> {
         Ok(CommandPacket {
             code: Code::CALL,
             internal_fields: vec![(Key::FUNCTION, Value::from(function))],
@@ -387,14 +403,13 @@ impl CommandPacket {
     }
 
     pub fn exec_sql<T>(sql: &str, args: &T) -> io::Result<CommandPacket>
-        where
-            T: Serialize,
+    where
+        T: Serialize,
     {
         CommandPacket::exec_sql_raw(sql, tools::serialize_to_vec_u8(args)?)
     }
 
-    pub fn exec_sql_raw(sql: &str, args_raw: Vec<u8>) -> io::Result<CommandPacket>
-    {
+    pub fn exec_sql_raw(sql: &str, args_raw: Vec<u8>) -> io::Result<CommandPacket> {
         Ok(CommandPacket {
             code: Code::EXECUTE,
             internal_fields: vec![(Key::SQL_TEXT, Value::from(sql))],

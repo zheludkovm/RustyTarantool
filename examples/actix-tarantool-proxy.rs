@@ -5,8 +5,8 @@ extern crate serde_json;
 use serde_derive::{Deserialize, Serialize};
 
 use actix_web::{get, web, App, HttpResponse, HttpServer};
+use futures::stream::StreamExt;
 use futures::{select, FutureExt};
-use futures::stream::{StreamExt};
 use rusty_tarantool::tarantool::{Client, ClientConfig, ExecWithParamaters};
 use std::io;
 
@@ -37,11 +37,13 @@ async fn index(
     params: web::Query<CountryRequest>,
     tarantool_client: web::Data<Client>,
 ) -> io::Result<HttpResponse> {
-    let response = tarantool_client.prepare_fn_call("test_search")
+    let response = tarantool_client
+        .prepare_fn_call("test_search")
         .bind_ref(&params.country_name)?
         .bind_ref(&params.region)?
         .bind_ref(&params.sub_region)?
-        .execute().await?;
+        .execute()
+        .await?;
     Ok(HttpResponse::Ok().json(CountryResponse {
         countries: response.decode_single()?,
     }))
@@ -54,13 +56,17 @@ async fn main() -> std::io::Result<()> {
         .set_reconnect_time_ms(2000)
         .build();
 
-    let mut notify_future = Box::pin(tarantool_client
-        .subscribe_to_notify_stream()
-        .for_each_concurrent(0, |s| async move { println!("current status {:?}", s) }));
+    let mut notify_future = Box::pin(
+        tarantool_client
+            .subscribe_to_notify_stream()
+            .for_each_concurrent(0, |s| async move { println!("current status {:?}", s) }),
+    );
 
-    let mut server_future = HttpServer::new(move || App::new().data(tarantool_client.clone()).service(index))
-        .bind("127.0.0.1:8080")?
-        .run().fuse();
+    let mut server_future =
+        HttpServer::new(move || App::new().data(tarantool_client.clone()).service(index))
+            .bind("127.0.0.1:8080")?
+            .run()
+            .fuse();
 
     select! {
         _r = notify_future => println!("Status notify stream is finished!"),

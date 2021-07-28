@@ -9,15 +9,15 @@ extern crate rmp_serde;
 extern crate rmpv;
 extern crate serde;
 
-use rusty_tarantool::tarantool::codec::TarantoolCodec;
-use rusty_tarantool::tarantool::packets::{AuthPacket, CommandPacket, TarantoolRequest};
+use rusty_tarantool::tarantool::{
+    codec::TarantoolCodec,
+    packets::{AuthPacket, CommandPacket, TarantoolRequest},
+};
 
-use futures::SinkExt;
+use futures::{stream::StreamExt, SinkExt};
 use std::io;
 use tokio::net::TcpStream;
 use tokio_util::codec::Decoder;
-
-use crate::tokio::stream::StreamExt;
 
 #[tokio::test]
 async fn test() -> io::Result<()> {

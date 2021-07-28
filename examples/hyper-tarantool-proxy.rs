@@ -3,7 +3,7 @@ use serde_derive::{Deserialize, Serialize};
 use std::convert::Infallible;
 
 use hyper::service::{make_service_fn, service_fn};
-use hyper::{header, Body, Method, Request, Response, Server, StatusCode};
+use hyper::{header, server::Server, Body, Method, Request, Response, StatusCode};
 use std::collections::HashMap;
 use std::io;
 use url;

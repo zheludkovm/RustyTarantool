@@ -1,21 +1,23 @@
-pub use crate::tarantool::packets::{CommandPacket, TarantoolRequest, TarantoolResponse, TarantoolSqlResponse};
-pub use crate::tarantool::tools::{serialize_to_vec_u8, serialize_array};
-use futures_channel::mpsc;
-use futures_channel::oneshot;
+use crate::tarantool::dispatch::{
+    CallbackSender, Dispatch, ERROR_CLIENT_DISCONNECTED, ERROR_DISPATCH_THREAD_IS_DEAD,
+};
+pub use crate::tarantool::{
+    dispatch::{ClientConfig, ClientStatus},
+    packets::{CommandPacket, TarantoolRequest, TarantoolResponse, TarantoolSqlResponse},
+    tools::{serialize_array, serialize_to_vec_u8},
+};
+use futures_channel::{mpsc, oneshot};
+use rmpv::Value;
 use serde::Serialize;
-use std::io;
-use std::sync::{Arc, Mutex, RwLock};
+use std::{
+    io,
+    sync::{Arc, Mutex, RwLock},
+};
 
 pub mod codec;
 mod dispatch;
 pub mod packets;
 mod tools;
-
-use crate::tarantool::dispatch::{
-    CallbackSender, Dispatch, ERROR_CLIENT_DISCONNECTED, ERROR_DISPATCH_THREAD_IS_DEAD,
-};
-pub use crate::tarantool::dispatch::{ClientConfig, ClientStatus};
-use rmpv::Value;
 
 impl ClientConfig {
     pub fn build(self) -> Client {
@@ -25,17 +27,17 @@ impl ClientConfig {
 
 ///iterator types
 pub enum IteratorType {
-    EQ = 0 , // key == x ASC order
-    REQ = 1, // key == x DESC order
-    ALL = 2, // all tuples
-    LT = 3, // key <  x
-    LE = 4, // key <= x
-    GE = 5, // key >= x
-    GT = 6, // key >  x
-    BitsAllSet = 7, // all bits from x are set in key
-    BitsAnySet = 8, // at least one x's bit is set
+    EQ = 0,            // key == x ASC order
+    REQ = 1,           // key == x DESC order
+    ALL = 2,           // all tuples
+    LT = 3,            // key <  x
+    LE = 4,            // key <= x
+    GE = 5,            // key >= x
+    GT = 6,            // key >  x
+    BitsAllSet = 7,    // all bits from x are set in key
+    BitsAnySet = 8,    // at least one x's bit is set
     BitsAllNotSet = 9, // all bits are not set
-    OVERLAPS = 10, // key overlaps x
+    OVERLAPS = 10,     // key overlaps x
     NEIGHBOR = 11,
 }
 
@@ -58,57 +60,63 @@ pub struct Client {
 
 pub trait ExecWithParamaters {
     fn bind_raw(self, param: Vec<u8>) -> io::Result<Self>
-        where Self: std::marker::Sized;
+    where
+        Self: std::marker::Sized;
 
     ///bind named parameter
-    fn bind_named_ref<T : Serialize, T1:Into<String>>(self, name: T1, param: &T) -> io::Result<Self>
-        where Self: std::marker::Sized,
-
+    fn bind_named_ref<T: Serialize, T1: Into<String>>(self, name: T1, param: &T) -> io::Result<Self>
+    where
+        Self: std::marker::Sized,
     {
         let mut name_s = name.into();
-        name_s.insert(0,':');
+        name_s.insert(0, ':');
 
         self.bind_raw(tools::serialize_one_element_map(
             name_s,
-            tools::serialize_to_vec_u8(param)?)?)
+            tools::serialize_to_vec_u8(param)?,
+        )?)
     }
 
     ///bind parameter
-    fn bind_ref<T : Serialize>(self, param: &T) -> io::Result<Self>
-        where Self: std::marker::Sized
+    fn bind_ref<T: Serialize>(self, param: &T) -> io::Result<Self>
+    where
+        Self: std::marker::Sized,
     {
         self.bind_raw(tools::serialize_to_vec_u8(param)?)
     }
 
     ///bind named parameter
-    fn bind_named<T, T1>(self, name: T1,param: T) -> io::Result<Self>
-        where T: Serialize,
-              Self: std::marker::Sized,
-              T1:Into<String>
+    fn bind_named<T, T1>(self, name: T1, param: T) -> io::Result<Self>
+    where
+        T: Serialize,
+        Self: std::marker::Sized,
+        T1: Into<String>,
     {
         self.bind_named_ref(name, &param)
     }
 
-
     ///bind parameter
     fn bind<T>(self, param: T) -> io::Result<Self>
-        where T: Serialize,
-              Self: std::marker::Sized
+    where
+        T: Serialize,
+        Self: std::marker::Sized,
     {
         self.bind_ref(&param)
     }
 
     ///bind null
     fn bind_null(self) -> io::Result<Self>
-        where  Self: std::marker::Sized
+    where
+        Self: std::marker::Sized,
     {
         self.bind_ref(&Value::Nil)
     }
 
     ///bind named null as parameter
     fn bind_named_null<T1>(self, name: T1) -> io::Result<Self>
-        where  Self: std::marker::Sized,
-               T1:Into<String>
+    where
+        Self: std::marker::Sized,
+        T1: Into<String>,
     {
         self.bind_named_ref(name, &Value::Nil)
     }
@@ -117,13 +125,13 @@ pub trait ExecWithParamaters {
 pub struct PreparedSql {
     client: Client,
     sql: String,
-    params: Vec<Vec<u8>>
+    params: Vec<Vec<u8>>,
 }
 
 pub struct PreparedFunctionCall {
     client: Client,
     function: String,
-    params: Vec<Vec<u8>>
+    params: Vec<Vec<u8>>,
 }
 
 impl Client {
@@ -159,12 +167,13 @@ impl Client {
     ///         .execute().await?;
     ///     let rows = response.decode_result_set()?;
     pub fn prepare_sql<T>(&self, sql: T) -> PreparedSql
-        where   T:Into<String>
+    where
+        T: Into<String>,
     {
         PreparedSql {
-            client : self.clone(),
+            client: self.clone(),
             sql: sql.into(),
-            params: vec![]
+            params: vec![],
         }
     }
 
@@ -180,13 +189,14 @@ impl Client {
     ///         .bind(&1)?
     ///         .execute().await?;
     ///     let s: (Vec<String>, u64) = response.decode_pair()?;
-    pub  fn prepare_fn_call<T>(&self, function_name: T) -> PreparedFunctionCall
-     where T:Into<String>
+    pub fn prepare_fn_call<T>(&self, function_name: T) -> PreparedFunctionCall
+    where
+        T: Into<String>,
     {
         PreparedFunctionCall {
-            client : self.clone(),
+            client: self.clone(),
             function: function_name.into(),
-            params: vec![]
+            params: vec![],
         }
     }
 
@@ -204,8 +214,6 @@ impl Client {
 
     /// send any command you manually create, this method is low level and not intended to be used
     pub async fn send_command(&self, req: CommandPacket) -> io::Result<TarantoolResponse> {
-        //        let dispatch = self.dispatch.clone();
-
         if let Some(mut extracted_dispatch) = self.dispatch.clone().lock().unwrap().take() {
             debug!("spawn coroutine!");
             //lazy spawning main coroutine in first tarantool call
@@ -384,10 +392,9 @@ impl Client {
     where
         T: Serialize,
     {
-        self.send_command(
-            CommandPacket::select(space, index, key, offset, limit, iterator as i32).unwrap(),
-        )
-        .await
+        let msg = CommandPacket::select(space, index, key, offset, limit, iterator as i32).unwrap();
+        trace!("select: {:?}", msg);
+        self.send_command(msg).await
     }
 
     ///insert tuple to space
@@ -518,7 +525,7 @@ impl Client {
     pub async fn eval<T, T1>(&self, expression: T1, args: &T) -> io::Result<TarantoolResponse>
     where
         T: Serialize,
-        T1: Into<String>
+        T1: Into<String>,
     {
         self.send_command(CommandPacket::eval(expression.into(), args).unwrap())
             .await
@@ -533,9 +540,9 @@ impl Client {
     ///
     #[inline(always)]
     pub async fn exec_sql<T, T1>(&self, sql: T1, args: &T) -> io::Result<TarantoolResponse>
-        where
-            T: Serialize,
-            T1: Into<String>
+    where
+        T: Serialize,
+        T1: Into<String>,
     {
         self.send_command(CommandPacket::exec_sql(sql.into().as_str(), args).unwrap())
             .await
@@ -568,19 +575,15 @@ impl Client {
     }
 }
 
-
 impl ExecWithParamaters for PreparedSql {
-
     ///bind raw parameter
-    fn bind_raw(mut self, param: Vec<u8>) -> io::Result<PreparedSql>  {
+    fn bind_raw(mut self, param: Vec<u8>) -> io::Result<PreparedSql> {
         self.params.push(param);
         Ok(self)
     }
 }
 
-
 impl PreparedSql {
-
     ///eval sql expression in tarantool
     ///
     /// # Examples
@@ -592,17 +595,20 @@ impl PreparedSql {
     //         .execute().await?;
     ///
     #[inline(always)]
-    pub async fn execute(self) -> io::Result<TarantoolSqlResponse>
-    {
-        self.client.send_command(CommandPacket::exec_sql_raw(&self.sql.as_str(), serialize_array(&self.params)?).unwrap())
-            .await.map(|val| val.into())
+    pub async fn execute(self) -> io::Result<TarantoolSqlResponse> {
+        self.client
+            .send_command(
+                CommandPacket::exec_sql_raw(&self.sql.as_str(), serialize_array(&self.params)?)
+                    .unwrap(),
+            )
+            .await
+            .map(|val| val.into())
     }
 }
 
 impl ExecWithParamaters for PreparedFunctionCall {
-
     ///bind raw parameter
-    fn bind_raw(mut self, param: Vec<u8>) -> io::Result<PreparedFunctionCall>  {
+    fn bind_raw(mut self, param: Vec<u8>) -> io::Result<PreparedFunctionCall> {
         self.params.push(param);
         Ok(self)
     }
@@ -633,9 +639,12 @@ impl PreparedFunctionCall {
     ///         .execute().await?;
     ///
     #[inline(always)]
-    pub async fn execute(self) -> io::Result<TarantoolResponse>
-    {
-        self.client.send_command(CommandPacket::call_raw(self.function.as_str(), serialize_array(&self.params)?).unwrap())
+    pub async fn execute(self) -> io::Result<TarantoolResponse> {
+        self.client
+            .send_command(
+                CommandPacket::call_raw(self.function.as_str(), serialize_array(&self.params)?)
+                    .unwrap(),
+            )
             .await
     }
 }
