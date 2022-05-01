@@ -130,10 +130,10 @@ box.cfg {
 
     -- By default, the log is sent to /var/log/tarantool/INSTANCE.log
     -- If logger is specified, the log is sent to the file named in the string
-    log = "./tarantool.log",
-    wal_dir = './db/wal',
-    memtx_dir = './db/memtx',
-    vinyl_dir = './db/vinyl',
+--     log = "tarantool.log",
+--     wal_dir = './db/wal',
+--     memtx_dir = './db/memtx',
+--     vinyl_dir = './db/vinyl',
     --work_dir = './work',
 
     -- If true, tarantool does not block on the log file descriptor
@@ -147,11 +147,11 @@ box.cfg {
     -- Inject the given string into server process title
     -- custom_proc_title = 'example';
     background = false;
-    pid_file = 'rust.pid';
+    --pid_file = 'rust.pid';
 }
 
 local function bootstrap()
-    box.schema.user.grant('guest', 'read,write,execute', 'universe')
+--     box.schema.user.grant('guest', 'read,write,execute', 'universe')
 
     box.schema.user.create('rust', { password = 'rust' })
     box.schema.user.grant('rust', 'read,write,execute', 'universe')

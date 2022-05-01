@@ -6,6 +6,7 @@ use hyper::service::{make_service_fn, service_fn};
 use hyper::{header, Body, Method, Request, Response, Server, StatusCode};
 use std::collections::HashMap;
 use std::io;
+use std::net::SocketAddr;
 use url;
 
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
@@ -83,7 +84,7 @@ pub async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         async { Ok::<_, Infallible>(service_fn(move |req| hello(req, tarantool_clone.clone()))) }
     });
 
-    let addr = ([127, 0, 0, 1], 8080).into();
+    let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
     let server = Server::bind(&addr).serve(make_svc);
     println!("Listening on http://{}", addr);
     server.await?;

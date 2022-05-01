@@ -5,7 +5,7 @@ use rmp::encode;
 use rmpv::decode;
 use rmpv::Value;
 use serde::{Deserialize, Serialize};
-use sha1::Sha1;
+use sha1::{Sha1, Digest};
 use std::error;
 use std::io;
 use std::io::{Cursor};
@@ -175,19 +175,19 @@ pub fn write_u32_to_slice(buf: &mut [u8], x: u32) {
 pub fn make_auth_digest(salt_bytes: Vec<u8>, password: &[u8]) -> io::Result<[u8; 20]> {
     let mut sha1 = Sha1::new();
     sha1.update(password);
-    let digest1 = sha1.digest().bytes();
-    sha1.reset();
+    let digest1 = sha1.finalize();
+    let mut sha1 = Sha1::new();
 
     sha1.update(&digest1);
-    let digest2 = sha1.digest().bytes();
+    let digest2 = sha1.finalize();
 
-    sha1.reset();
+    let mut sha1 = Sha1::new();
     let salt_str = String::from_utf8(salt_bytes).map_err(map_err_to_io)?;
 
     let decoded_salt = &base64::decode(&salt_str.trim()).map_err(map_err_to_io)?[..20];
     sha1.update(&decoded_salt);
     sha1.update(&digest2);
-    let digest3 = sha1.digest().bytes();
+    let digest3 = sha1.finalize();
 
     let mut digest4: [u8; 20] = [0; 20];
 

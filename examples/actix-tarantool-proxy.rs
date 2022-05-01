@@ -9,6 +9,7 @@ use futures::{select, FutureExt};
 use futures::stream::{StreamExt};
 use rusty_tarantool::tarantool::{Client, ClientConfig, ExecWithParamaters};
 use std::io;
+use actix_web::web::Data;
 
 #[derive(Debug, Deserialize, PartialEq, Serialize)]
 struct CountryInfo {
@@ -58,7 +59,7 @@ async fn main() -> std::io::Result<()> {
         .subscribe_to_notify_stream()
         .for_each_concurrent(0, |s| async move { println!("current status {:?}", s) }));
 
-    let mut server_future = HttpServer::new(move || App::new().data(tarantool_client.clone()).service(index))
+    let mut server_future = HttpServer::new(move || App::new().app_data(Data::new(tarantool_client.clone())).service(index))
         .bind("127.0.0.1:8080")?
         .run().fuse();
 

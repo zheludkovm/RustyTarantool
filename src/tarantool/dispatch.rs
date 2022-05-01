@@ -12,7 +12,8 @@ use futures_channel::oneshot;
 use futures_util::FutureExt;
 
 use tokio::net::TcpStream;
-use tokio::time::{delay_for, delay_queue, DelayQueue, Duration, Instant};
+use tokio::time::{sleep_until, Duration, Instant};
+use tokio_util::time::{delay_queue, DelayQueue};
 use tokio_util::codec::{Decoder, Framed};
 
 use crate::tarantool::codec::{RequestId, TarantoolCodec, TarantoolFramedRequest};
@@ -285,7 +286,7 @@ impl Dispatch {
                     self.set_status(ClientStatus::Disconnected(e.to_string()))
                         .await;
                     self.send_error_to_all(e.to_string());
-                    delay_for(Duration::from_millis(self.config.reconnect_time_ms)).await;
+                    sleep_until(Instant::now() + Duration::from_millis(self.config.reconnect_time_ms)).await;
                 }
             }
 
