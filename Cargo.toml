@@ -25,8 +25,8 @@ futures-channel = "0.3"
 futures-util = "0.3"
 futures = "0.3"
 bytes = "1.1"
-log = "0"
-env_logger = "0"
+log = "0.4"
+env_logger = "0.9"
 byteorder = "1.4"
 
 tokio = { version = "1", features = ["full","time"] }
